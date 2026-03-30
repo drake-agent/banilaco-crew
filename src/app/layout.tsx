@@ -1,8 +1,13 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+};
 
 export const metadata: Metadata = {
   title: 'Banilaco Crew - K-Beauty Creator Program',
@@ -17,7 +22,6 @@ export const metadata: Metadata = {
     'commission',
   ],
   authors: [{ name: 'Banila Co' }],
-  viewport: 'width=device-width, initial-scale=1',
   openGraph: {
     type: 'website',
     locale: 'en_US',

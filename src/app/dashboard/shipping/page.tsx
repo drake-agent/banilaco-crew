@@ -399,7 +399,7 @@ export default function ShippingDashboardPage() {
             const conf = STATUS_CONFIG[status];
             return (
               <React.Fragment key={status}>
-                {i > 0 && <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />}
+                {i > 0 && <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />}
                 <button
                   onClick={() => setStatusFilter(statusFilter === status ? 'all' : status)}
                   className={`flex flex-col items-center px-4 py-3 rounded-lg min-w-[100px] transition-all ${
@@ -415,7 +415,7 @@ export default function ShippingDashboardPage() {
             );
           })}
           {/* Failed/Returned */}
-          <ChevronRight className="w-4 h-4 text-gray-300 flex-shrink-0" />
+          <ChevronRight className="w-4 h-4 text-gray-300 shrink-0" />
           <div className="flex flex-col items-center px-4 py-3 rounded-lg min-w-[100px] bg-red-50/50">
             <span className="text-xl font-bold text-red-500">{analytics.failed}</span>
             <span className="text-[11px] text-gray-500">Issues</span>

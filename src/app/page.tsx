@@ -19,7 +19,7 @@ export default function Home() {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden py-20 sm:py-32 lg:py-40">
-        <div className="absolute inset-0 bg-gradient-to-br from-pink-50 via-white to-orange-50 -z-10" />
+        <div className="absolute inset-0 bg-linear-to-br from-pink-50 via-white to-orange-50 -z-10" />
 
         <div className="section-container text-center">
           <div className="animate-fade-in-up">
@@ -283,7 +283,7 @@ export default function Home() {
 
       {/* CTA Section */}
       <section className="relative overflow-hidden py-20 sm:py-32">
-        <div className="absolute inset-0 bg-gradient-to-r from-pink-100 to-orange-100 -z-10" />
+        <div className="absolute inset-0 bg-linear-to-r from-pink-100 to-orange-100 -z-10" />
 
         <div className="section-container text-center">
           <h2 className="section-title">Ready to Join?</h2>

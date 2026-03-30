@@ -53,7 +53,7 @@ const payoutHistory: Payout[] = [
 
 export default function EarningsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white p-6">
+    <div className="min-h-screen bg-linear-to-br from-pink-50 to-white p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -94,7 +94,7 @@ export default function EarningsPage() {
           </div>
 
           {/* Next Payout */}
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg shadow p-6 border border-blue-200">
+          <div className="bg-linear-to-br from-blue-50 to-indigo-50 rounded-lg shadow p-6 border border-blue-200">
             <p className="text-gray-600 text-sm font-medium">Next Payout</p>
             <div className="mt-3">
               <p className="text-3xl font-bold text-indigo-900">$555</p>
@@ -178,7 +178,7 @@ export default function EarningsPage() {
           </div>
 
           {/* Tip Box */}
-          <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg border border-yellow-200 p-6">
+          <div className="bg-linear-to-br from-yellow-50 to-orange-50 rounded-lg border border-yellow-200 p-6">
             <div className="flex gap-3">
               <div className="text-2xl">💡</div>
               <div>

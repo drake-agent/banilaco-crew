@@ -100,7 +100,7 @@ export default function DashboardLayout({
                         : 'text-gray-300 hover:bg-gray-800'
                     )}
                   >
-                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    <Icon className="w-5 h-5 shrink-0" />
                     <span>{item.label}</span>
                   </button>
                 </Link>

@@ -387,7 +387,7 @@ export default function DashboardPage() {
               >
                 <div
                   className={cn(
-                    'mt-1 w-2 h-2 rounded-full flex-shrink-0',
+                    'mt-1 w-2 h-2 rounded-full shrink-0',
                     activity.type === 'creator_added'
                       ? 'bg-emerald-500'
                       : activity.type === 'outreach_sent'

@@ -4,12 +4,12 @@
 // /creator   → Creator 인증 필요
 // ============================================
 
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
+  let res = NextResponse.next({ request: req });
   const pathname = req.nextUrl.pathname;
 
   // Public routes — 인증 불필요
@@ -29,14 +29,34 @@ export async function middleware(req: NextRequest) {
     return res;
   }
 
-  // Supabase 세션 확인
-  const supabase = createMiddlewareClient({ req, res });
+  // Supabase 세션 확인 (@supabase/ssr 방식)
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return req.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            req.cookies.set(name, value);
+          });
+          res = NextResponse.next({ request: req });
+          cookiesToSet.forEach(({ name, value, options }) => {
+            res.cookies.set(name, value, options);
+          });
+        },
+      },
+    }
+  );
+
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
   // 미인증 → /auth로 리다이렉트
-  if (!session) {
+  if (!user) {
     const authUrl = new URL('/auth', req.url);
     authUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(authUrl);
@@ -47,19 +67,17 @@ export async function middleware(req: NextRequest) {
     const { data: account } = await supabase
       .from('creator_accounts')
       .select('id')
-      .eq('auth_user_id', session.user.id)
+      .eq('auth_user_id', user.id)
       .single();
 
     if (!account) {
-      // 크리에이터 계정이 없으면 메인으로
       return NextResponse.redirect(new URL('/', req.url));
     }
   }
 
   // /dashboard 라우트 — admin 체크
-  // Supabase에서 user_metadata.role = 'admin' 또는 별도 admins 테이블로 관리
   if (pathname.startsWith('/dashboard')) {
-    const userRole = session.user.user_metadata?.role;
+    const userRole = user.user_metadata?.role;
     if (userRole !== 'admin') {
       return NextResponse.redirect(new URL('/', req.url));
     }
@@ -70,7 +88,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    // 인증이 필요한 모든 라우트
     '/dashboard/:path*',
     '/creator/:path*',
     '/api/creators/:path*',

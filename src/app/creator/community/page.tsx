@@ -97,7 +97,7 @@ export default function CommunityPage() {
   const gmvGap = leaderGmv - yourGmv;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white p-6">
+    <div className="min-h-screen bg-linear-to-br from-pink-50 to-white p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -109,7 +109,7 @@ export default function CommunityPage() {
         </div>
 
         {/* Challenge Card */}
-        <div className="bg-gradient-to-r from-pink-400 via-pink-500 to-rose-500 rounded-lg shadow-lg p-8 mb-8 text-white">
+        <div className="bg-linear-to-r from-pink-400 via-pink-500 to-rose-500 rounded-lg shadow-lg p-8 mb-8 text-white">
           <h2 className="text-2xl font-bold mb-2">This Week's Challenge</h2>
           <p className="text-pink-100 mb-6 flex items-center gap-2">
             <Trophy className="w-5 h-5" />

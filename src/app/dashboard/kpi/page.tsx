@@ -324,7 +324,7 @@ function StatCard({
           )}
         </div>
         {Icon && (
-          <div className="p-3 bg-pink-100 rounded-lg flex-shrink-0">
+          <div className="p-3 bg-pink-100 rounded-lg shrink-0">
             <Icon className="w-6 h-6 text-pink-600" />
           </div>
         )}
@@ -344,7 +344,7 @@ function GoalTrackerHero() {
       : 'ahead';
 
   return (
-    <Card className="p-8 bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200">
+    <Card className="p-8 bg-linear-to-r from-pink-50 to-purple-50 border-pink-200">
       <div className="space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between">
@@ -404,7 +404,7 @@ function GoalTrackerHero() {
           </div>
           <div className="relative h-4 bg-gray-300 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-pink-500 to-purple-600 rounded-full transition-all duration-500"
+              className="h-full bg-linear-to-r from-pink-500 to-purple-600 rounded-full transition-all duration-500"
               style={{ width: `${Math.min(progressPercent, 100)}%` }}
             />
           </div>

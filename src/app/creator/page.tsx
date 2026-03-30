@@ -45,13 +45,13 @@ const stats = [
 
 export default function MyPerformance() {
   return (
-    <div className="flex flex-col h-full bg-gradient-to-br from-white to-gray-50">
+    <div className="flex flex-col h-full bg-linear-to-br from-white to-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="p-8">
           <h1 className="text-3xl font-bold text-gray-900">My Performance</h1>
           <p className="text-gray-600 mt-2">Last 5 weeks · Keep going, you're almost Gold! 🔥</p>
-          <div className="mt-4 inline-block px-4 py-2 bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800 text-sm font-semibold rounded-full">
+          <div className="mt-4 inline-block px-4 py-2 bg-linear-to-r from-yellow-100 to-amber-100 text-yellow-800 text-sm font-semibold rounded-full">
             🥈 Silver · 35% Commission
           </div>
         </div>
@@ -145,7 +145,7 @@ export default function MyPerformance() {
               <p className="text-sm text-gray-500 mt-1">of $1,000 target</p>
               <div className="mt-4 w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-pink-500 to-rose-500 h-full rounded-full transition-all"
+                  className="bg-linear-to-r from-pink-500 to-rose-500 h-full rounded-full transition-all"
                   style={{ width: '85%' }}
                 ></div>
               </div>
@@ -159,7 +159,7 @@ export default function MyPerformance() {
               <p className="text-sm text-gray-500 mt-1">of 5 videos posted</p>
               <div className="mt-4 w-full bg-gray-200 rounded-full h-3 overflow-hidden">
                 <div
-                  className="bg-gradient-to-r from-green-500 to-emerald-500 h-full rounded-full transition-all"
+                  className="bg-linear-to-r from-green-500 to-emerald-500 h-full rounded-full transition-all"
                   style={{ width: '100%' }}
                 ></div>
               </div>
@@ -167,7 +167,7 @@ export default function MyPerformance() {
             </div>
 
             {/* Unlock Gold */}
-            <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-lg border-2 border-yellow-300 p-6 shadow-sm">
+            <div className="bg-linear-to-br from-yellow-50 to-amber-50 rounded-lg border-2 border-yellow-300 p-6 shadow-sm">
               <p className="text-sm font-semibold text-yellow-900 mb-2">🔓 UNLOCK GOLD TIER</p>
               <p className="text-lg font-bold text-yellow-900">$150 more GMV</p>
               <p className="text-sm text-yellow-700 mt-3 leading-relaxed">
@@ -180,9 +180,9 @@ export default function MyPerformance() {
           </div>
 
           {/* Insight Box */}
-          <div className="bg-gradient-to-r from-pink-50 via-rose-50 to-pink-50 rounded-lg border border-pink-200 p-6 shadow-sm">
+          <div className="bg-linear-to-r from-pink-50 via-rose-50 to-pink-50 rounded-lg border border-pink-200 p-6 shadow-sm">
             <div className="flex items-start space-x-4">
-              <span className="text-4xl flex-shrink-0">💡</span>
+              <span className="text-4xl shrink-0">💡</span>
               <div>
                 <h3 className="text-lg font-bold text-pink-900 mb-2">Your Top Performing Content</h3>
                 <p className="text-pink-800 mb-3">

@@ -396,7 +396,7 @@ export default function CreatorsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 p-6">
+    <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 p-6">
       <div className="mx-auto max-w-7xl">
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
@@ -408,7 +408,7 @@ export default function CreatorsPage() {
           </div>
           <button
             onClick={() => setShowAddModal(true)}
-            className="rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 px-6 py-3 font-semibold text-white shadow-lg transition hover:shadow-xl hover:from-pink-600 hover:to-rose-600"
+            className="rounded-lg bg-linear-to-r from-pink-500 to-rose-500 px-6 py-3 font-semibold text-white shadow-lg transition hover:shadow-xl hover:from-pink-600 hover:to-rose-600"
           >
             + Add Creator
           </button>
@@ -840,7 +840,7 @@ export default function CreatorsPage() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded bg-gradient-to-r from-pink-500 to-rose-500 px-4 py-2 font-semibold text-white transition hover:from-pink-600 hover:to-rose-600"
+                  className="flex-1 rounded bg-linear-to-r from-pink-500 to-rose-500 px-4 py-2 font-semibold text-white transition hover:from-pink-600 hover:to-rose-600"
                 >
                   Add Creator
                 </button>

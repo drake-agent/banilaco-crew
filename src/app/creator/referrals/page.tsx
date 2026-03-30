@@ -123,7 +123,7 @@ export default function CreatorReferralsPage() {
             {/* Code Display */}
             <div>
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Your Referral Code</h2>
-              <div className="bg-gradient-to-br from-pink-50 to-rose-50 rounded-lg p-6 border border-pink-200">
+              <div className="bg-linear-to-br from-pink-50 to-rose-50 rounded-lg p-6 border border-pink-200">
                 <div className="text-5xl font-bold text-pink-600 mb-4 font-mono">
                   {mockStats.referralCode}
                 </div>
@@ -159,7 +159,7 @@ export default function CreatorReferralsPage() {
 
                 <button
                   onClick={handleShareInstagram}
-                  className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                  className="w-full bg-linear-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
                 >
                   <Share2 className="w-4 h-4" />
                   Share on Instagram
@@ -211,7 +211,7 @@ export default function CreatorReferralsPage() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-pink-50 to-rose-50 rounded-lg shadow-sm border border-pink-200 p-6">
+          <div className="bg-linear-to-br from-pink-50 to-rose-50 rounded-lg shadow-sm border border-pink-200 p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-600">Total Earnings</p>
@@ -260,7 +260,7 @@ export default function CreatorReferralsPage() {
         </div>
 
         {/* Motivation Section */}
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-8 mb-8">
+        <div className="bg-linear-to-r from-amber-50 to-orange-50 rounded-xl border border-amber-200 p-8 mb-8">
           <div className="flex items-start gap-4">
             <div className="text-3xl">🔥</div>
             <div>
@@ -272,7 +272,7 @@ export default function CreatorReferralsPage() {
               <div className="flex gap-2">
                 <div className="flex-1 bg-white rounded-full h-2">
                   <div
-                    className="bg-gradient-to-r from-amber-400 to-orange-500 h-full rounded-full"
+                    className="bg-linear-to-r from-amber-400 to-orange-500 h-full rounded-full"
                     style={{ width: `${(mockStats.totalQualified / 5) * 100}%` }}
                   ></div>
                 </div>

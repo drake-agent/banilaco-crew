@@ -98,7 +98,7 @@ const maxGMV = Math.max(...formats.map(f => f.gmv));
 
 export default function HowToImprove() {
   return (
-    <div className="flex flex-col h-full bg-gradient-to-br from-white to-gray-50">
+    <div className="flex flex-col h-full bg-linear-to-br from-white to-gray-50">
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
         <div className="p-8">
@@ -248,8 +248,8 @@ export default function HowToImprove() {
                         <div
                           className={`h-full rounded-full transition-all ${
                             isTryThis
-                              ? 'bg-gradient-to-r from-green-500 to-emerald-500'
-                              : 'bg-gradient-to-r from-orange-400 to-pink-500'
+                              ? 'bg-linear-to-r from-green-500 to-emerald-500'
+                              : 'bg-linear-to-r from-orange-400 to-pink-500'
                           }`}
                           style={{ width: `${percentage}%` }}
                         ></div>
@@ -269,13 +269,13 @@ export default function HowToImprove() {
           </div>
 
           {/* Call to Action */}
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6 shadow-sm">
+          <div className="bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6 shadow-sm">
             <h3 className="text-lg font-bold text-blue-900 mb-2">Ready to Level Up?</h3>
             <p className="text-blue-800 mb-4">
               Start with the HIGH priority recommendations this week. Track your progress in the My
               Performance dashboard.
             </p>
-            <button className="px-6 py-2 bg-gradient-to-r from-pink-500 to-rose-500 text-white font-semibold rounded-lg hover:shadow-lg transition-shadow">
+            <button className="px-6 py-2 bg-linear-to-r from-pink-500 to-rose-500 text-white font-semibold rounded-lg hover:shadow-lg transition-shadow">
               View My Content Ideas
             </button>
           </div>

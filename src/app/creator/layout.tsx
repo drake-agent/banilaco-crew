@@ -43,7 +43,7 @@ export default function CreatorLayout({
       <aside className="w-64 bg-white border-r border-gray-200 shadow-sm flex flex-col">
         {/* Logo */}
         <div className="p-6 border-b border-gray-100">
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-500 via-purple-500 to-rose-500 bg-clip-text text-transparent">
+          <h1 className="text-2xl font-bold bg-linear-to-r from-pink-500 via-purple-500 to-rose-500 bg-clip-text text-transparent">
             banilaco crew
           </h1>
         </div>
@@ -51,7 +51,7 @@ export default function CreatorLayout({
         {/* User Profile */}
         <div className="p-6 border-b border-gray-100">
           <div className="flex items-start space-x-3">
-            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+            <div className="w-12 h-12 rounded-full bg-linear-to-br from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
               {user.avatar}
             </div>
             <div className="flex-1 min-w-0">
@@ -75,7 +75,7 @@ export default function CreatorLayout({
                     href={item.href}
                     className={`flex items-center space-x-3 px-4 py-3 rounded-lg font-medium transition-all ${
                       isActive
-                        ? 'bg-gradient-to-r from-pink-50 to-rose-50 text-pink-700 border-l-4 border-pink-500'
+                        ? 'bg-linear-to-r from-pink-50 to-rose-50 text-pink-700 border-l-4 border-pink-500'
                         : 'text-gray-700 hover:bg-gray-100'
                     }`}
                   >
@@ -89,7 +89,7 @@ export default function CreatorLayout({
         </nav>
 
         {/* Tier Progress */}
-        <div className="p-6 border-t border-gray-100 bg-gradient-to-br from-yellow-50 to-amber-50">
+        <div className="p-6 border-t border-gray-100 bg-linear-to-br from-yellow-50 to-amber-50">
           <p className="text-xs font-semibold text-gray-600 mb-2">TIER PROGRESS</p>
           <div className="flex items-baseline space-x-1 mb-3">
             <span className="text-sm font-bold text-gray-900">{tierProgress.current}</span>
@@ -100,7 +100,7 @@ export default function CreatorLayout({
           <div className="mb-2">
             <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
               <div
-                className="bg-gradient-to-r from-pink-500 to-rose-500 h-full rounded-full transition-all"
+                className="bg-linear-to-r from-pink-500 to-rose-500 h-full rounded-full transition-all"
                 style={{ width: `${tierProgress.percentage}%` }}
               ></div>
             </div>

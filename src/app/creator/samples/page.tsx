@@ -75,7 +75,7 @@ const getStatusLabel = (status: Sample['status']) => {
 
 export default function SamplesPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 to-white p-6">
+    <div className="min-h-screen bg-linear-to-br from-pink-50 to-white p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -88,7 +88,7 @@ export default function SamplesPage() {
 
         {/* Request Button */}
         <div className="mb-8">
-          <button className="bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition transform hover:scale-105">
+          <button className="bg-linear-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white font-semibold py-3 px-6 rounded-lg shadow-md transition transform hover:scale-105">
             + Request New Sample
           </button>
         </div>
@@ -178,9 +178,9 @@ export default function SamplesPage() {
         </div>
 
         {/* Tip Box */}
-        <div className="mt-8 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6">
+        <div className="mt-8 bg-linear-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200 p-6">
           <div className="flex gap-3">
-            <AlertCircle className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-sm font-semibold text-gray-900 mb-1">
                 Pro Tip

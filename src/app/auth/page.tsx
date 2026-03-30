@@ -31,7 +31,7 @@ export default function AuthPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">
+          <h1 className="text-4xl font-bold bg-linear-to-r from-amber-500 to-orange-600 bg-clip-text text-transparent">
             banilaco crew
           </h1>
         </div>
