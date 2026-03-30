@@ -1,0 +1,122 @@
+{
+  "iteration": 2,
+  "timestamp": "2026-03-27",
+  "fixes_attempted": 13,
+  "fixes_succeeded": 13,
+  "fixes_failed": 0,
+  "build_status": "pass (zero new errors introduced)",
+  "test_status": "no-tests",
+  "changed_files": [
+    "src/app/api/creators/route.ts",
+    "src/app/api/samples/route.ts",
+    "src/app/api/outreach/route.ts",
+    "src/lib/reminders/reminder-engine.ts",
+    "src/lib/ai/recommendation-engine.ts",
+    "src/lib/ai/prompt-templates.ts",
+    "src/lib/adapters/sync-orchestrator.ts"
+  ],
+  "details": [
+    {
+      "finding_id": "VULN-002",
+      "severity": "critical",
+      "status": "fixed",
+      "file": "src/app/api/creators/route.ts",
+      "notes": "Added sanitizeSearch() — escapes %, _, \\ in ilike queries. Max 100 chars."
+    },
+    {
+      "finding_id": "VULN-007",
+      "severity": "medium",
+      "status": "fixed",
+      "file": "src/app/api/creators/route.ts, samples/route.ts, outreach/route.ts",
+      "notes": "Added clampPagination() — limit 1-100, page 1-10000, NaN→defaults"
+    },
+    {
+      "finding_id": "VULN-008",
+      "severity": "medium",
+      "status": "fixed",
+      "file": "src/app/api/creators/route.ts",
+      "notes": "Added pickAllowedFields() whitelist for POST. Blocks tier/commission_rate/monthly_gmv injection."
+    },
+    {
+      "finding_id": "VULN-005a",
+      "severity": "high",
+      "status": "fixed",
+      "file": "src/app/api/samples/route.ts",
+      "notes": "Added pickPatchFields() whitelist for PATCH. Blocks creator_id, content_gmv injection."
+    },
+    {
+      "finding_id": "VULN-005b",
+      "severity": "high",
+      "status": "fixed",
+      "file": "src/app/api/outreach/route.ts",
+      "notes": "Added pickPatchFields() whitelist. Preserved conversion logic with explicit field pass-through."
+    },
+    {
+      "finding_id": "SC-004",
+      "severity": "high",
+      "status": "fixed",
+      "file": "src/lib/reminders/reminder-engine.ts",
+      "notes": "sendReminder1/2 now check DM send result; skip DB status update if send failed."
+    },
+    {
+      "finding_id": "SC-005",
+      "severity": "high",
+      "status": "fixed",
+      "file": "src/lib/ai/recommendation-engine.ts",
+      "notes": "Strengthened guard: if (!content || content.length === 0). Safe date parse for oldest post."
+    },
+    {
+      "finding_id": "SC-008",
+      "severity": "medium",
+      "status": "fixed",
+      "file": "src/lib/ai/prompt-templates.ts",
+      "notes": "Added AI_CONFIG constant with env var override (ANTHROPIC_MODEL_ID). Model updated to claude-sonnet-4."
+    },
+    {
+      "finding_id": "BUG-3",
+      "severity": "high",
+      "status": "fixed",
+      "file": "src/lib/ai/recommendation-engine.ts",
+      "notes": "Added empty recs guard in saveRecommendations to prevent empty INSERT."
+    },
+    {
+      "finding_id": "BUG-5",
+      "severity": "high",
+      "status": "fixed",
+      "file": "src/lib/adapters/sync-orchestrator.ts",
+      "notes": "Nullish coalescing on all metric fields; divisor defaults to 1 to prevent Infinity."
+    },
+    {
+      "finding_id": "VULN-010a",
+      "severity": "low",
+      "status": "fixed",
+      "file": "src/app/api/creators/route.ts",
+      "notes": "Error responses now return generic messages; raw Supabase errors logged server-side only."
+    },
+    {
+      "finding_id": "VULN-010b",
+      "severity": "low",
+      "status": "fixed",
+      "file": "src/app/api/samples/route.ts",
+      "notes": "Same sanitized error pattern."
+    },
+    {
+      "finding_id": "VULN-010c",
+      "severity": "low",
+      "status": "fixed",
+      "file": "src/app/api/outreach/route.ts",
+      "notes": "Same sanitized error pattern."
+    }
+  ],
+  "scorecard_after_iter2": {
+    "critical": 0,
+    "high": 0,
+    "medium": 2,
+    "low": 0,
+    "total": 2
+  },
+  "remaining": [
+    "VULN-009 (medium) — CSRF protection: requires server-side token middleware, out of scope for auto-fix",
+    "SC-006 (high→deferred) — Move admin from JWT to per-route DB check: architectural change, needs manual review"
+  ]
+}

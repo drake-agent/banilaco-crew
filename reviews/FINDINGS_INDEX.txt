@@ -1,0 +1,241 @@
+================================================================================
+BANILACO-CREW PHASE 1 CODE REVIEW - FINDINGS INDEX
+Date: 2026-03-30
+Review Type: Bug Hunt + Security Audit (Post-Previous-Fixes)
+================================================================================
+
+SUMMARY METRICS
+===============
+Total Findings:        18
+  Critical:             2  (11%)
+  High:                 4  (22%)
+  Medium:              10  (56%)
+  Low:                  2  (11%)
+
+By Category:
+  Authorization:        3 findings
+  Data Integrity:       1 finding
+  Rate Limiting:        1 finding
+  RLS/Access Control:   1 finding
+  Data Exposure:        2 findings
+  Null Safety:          1 finding
+  Type Safety:          2 findings
+  Arithmetic Error:     1 finding
+  HMAC Signing:         1 finding
+  Request Handling:     1 finding
+  Error Handling:       1 finding
+  Logic Error:          1 finding
+  Best Practice:        1 finding
+
+================================================================================
+CRITICAL FINDINGS (MUST FIX BEFORE PRODUCTION)
+================================================================================
+
+[SEC-1] /api/kpi PUT - No Authentication + Data Exposure
+  Severity:   CRITICAL
+  File:       src/app/api/kpi/route.ts:45-97
+  Issue:      PUT endpoint has zero auth checks, exposes aggregated creator data
+  Impact:     Anyone can learn business metrics (total GMV, tier distribution, 
+              source strategy). No audit trail. Confirms 30K target.
+  Fix Time:   1 hour
+  Status:     ❌ Not Fixed (New Issue)
+
+[SEC-3] RLS Policies Use 'USING (true)' - Authorization Bypass
+  Severity:   CRITICAL
+  Files:      supabase/schema.sql:363-382
+              supabase/schema-v3.sql:50,58
+  Issue:      All RLS policies grant "authenticated USING (true)" — any logged-in 
+              user can read/write ALL data (creators, shipments, referrals, etc.)
+  Impact:     Privilege escalation. Junior team member can modify creator tiers,
+              commission rates, payouts. Defeats entire RLS model.
+  Fix Time:   3 hours
+  Status:     ❌ Not Fixed (New Issue)
+
+================================================================================
+HIGH SEVERITY FINDINGS (FIX THIS WEEK)
+================================================================================
+
+[BUG-1] /api/shipping POST - Missing Field Validation
+  Severity:   HIGH
+  File:       src/app/api/shipping/route.ts:108-136
+  Issue:      update_status action accepts arbitrary fields, no status enum 
+              validation, no auth check
+  Impact:     Database corruption: invalid status values, unintended fields 
+              updated. No audit trail.
+  Fix Time:   1 hour
+  Status:     ❌ Not Fixed (New Issue)
+
+[SEC-2] /api/join POST - No Rate Limiting
+  Severity:   HIGH
+  File:       src/app/api/join/route.ts:16-64
+  Issue:      Public endpoint with zero rate limiting, CAPTCHA, or spam detection
+  Impact:     Database pollution from spam, enumeration attacks, potential DOS
+  Fix Time:   2 hours
+  Status:     ❌ Not Fixed (New Issue)
+
+[SEC-4] createServerClient() Uses service_role Key (RLS Bypass)
+  Severity:   HIGH
+  File:       src/lib/supabase.ts:10-16
+  Issue:      Service role key bypasses ALL RLS policies. Combined with missing 
+              auth (SEC-1), this is complete data breach vector.
+  Impact:     Unauthenticated attacker + service_role = full database access
+  Mitigation: Add application-level auth to every endpoint. Don't rely on RLS.
+  Status:     ⚠️  Design Issue (Partially Mitigated by Adding Endpoint Auth)
+
+[BUG-2] /api/kpi PUT Null Dereference
+  Severity:   HIGH
+  File:       src/app/api/kpi/route.ts:53, 81-91
+  Issue:      latestKpi.data accessed without null check. Weak error handling 
+              masks real database errors.
+  Impact:     Silent failures. Database errors not properly reported.
+  Fix Time:   1 hour
+  Status:     ❌ Not Fixed (New Issue)
+
+================================================================================
+MEDIUM SEVERITY FINDINGS (FIX NEXT WEEK)
+================================================================================
+
+[BUG-3] Loose 'any' Types in /api/kpi PUT Filters
+  Severity:   MEDIUM
+  File:       src/app/api/kpi/route.ts:56-76
+  Issue:      All filters use 'c: any' with no type validation. Silent failures 
+              if data structure changes.
+  Impact:     Dashboard shows incorrect metrics. No warning to admin.
+  Fix Time:   1 hour
+  Status:     ❌ Not Fixed (New Issue)
+
+[BUG-4] /api/kpi POST weeks_to_30k NaN/Infinity
+  Severity:   MEDIUM
+  File:       src/app/api/kpi/route.ts:23-29
+  Issue:      Division by zero if weekly_net_increase=0. No input validation for 
+              negative cumulative_affiliates.
+  Impact:     Dashboard displays NaN or Infinity. Breaks analytics UI.
+  Fix Time:   1 hour
+  Status:     ❌ Not Fixed (New Issue)
+
+[SEC-5] TikTok Shop HMAC Signing Incorrect
+  Severity:   MEDIUM
+  File:       src/lib/adapters/tiktok-shop.adapter.ts:85-109
+  Issue:      HMAC uses non-standard signing scheme (appSecret in baseString AND 
+              as key). Likely incorrect per TikTok API spec.
+  Impact:     API integration fails. Orders not synced. Feature broken.
+  Fix Time:   1 hour
+  Status:     ❌ Not Fixed (New Issue - Needs TikTok Spec Verification)
+
+[BUG-5] Apify Token Exposed in URL Parameters
+  Severity:   MEDIUM
+  File:       src/lib/adapters/tiktok-crawler.adapter.ts:81, 89
+  Issue:      API token passed in query string instead of Authorization header. 
+              Visible in logs, caches, browser history.
+  Impact:     Credential exposure. Attacker can extract token from logs and make 
+              API calls.
+  Fix Time:   30 minutes
+  Status:     ❌ Not Fixed (New Issue)
+
+[BUG-6] Competitor Discovery Skips Engagement Calculation
+  Severity:   MEDIUM
+  File:       src/lib/adapters/competitor-discovery.adapter.ts:132-144, 178-191
+  Issue:      already_in_db flag exposed. avg_views/engagement_rate hardcoded to 0.
+  Impact:     Competitors learn which creators are already affiliated. Business 
+              intelligence leak.
+  Fix Time:   30 minutes
+  Status:     ❌ Not Fixed (New Issue)
+
+[BUG-7] DHL Tracking Format Regex Too Permissive
+  Severity:   MEDIUM (Low Impact)
+  File:       src/lib/adapters/shipping-tracker.adapter.ts:182
+  Issue:      DHL regex is /^\d{10}$/ but actual DHL is 11-13 digits. Overlap 
+              with FedEx detection.
+  Impact:     Incorrect carrier detection. Tracking lookup fails. UX degradation.
+  Fix Time:   30 minutes
+  Status:     ❌ Not Fixed (New Issue)
+
+[SEC-6] Email API Key Leaked in Error Logs
+  Severity:   MEDIUM
+  File:       src/lib/reminders/notification-sender.ts:72-75
+  Issue:      Resend API error logged with full response. Headers may contain key.
+  Impact:     Credential leakage. API key visible in log aggregation systems.
+  Fix Time:   30 minutes
+  Status:     ❌ Not Fixed (New Issue)
+
+[BUG-8] auto_update_tier Trigger Fires Unnecessarily
+  Severity:   MEDIUM
+  File:       supabase/schema.sql:325-346
+  Issue:      Trigger recalculates tier on EVERY UPDATE, even non-GMV fields. 
+              Inefficient, could cause unexpected tier changes.
+  Impact:     Performance issue. Potential for tier miscalculation on concurrent updates.
+  Fix Time:   1 hour
+  Status:     ❌ Not Fixed (New Issue)
+
+[SEC-7] /api/creator/recommendations Lacks Audit Logging
+  Severity:   MEDIUM
+  File:       src/app/api/creator/recommendations/route.ts:109-169
+  Issue:      PATCH endpoint modifies data but no audit log of who did what
+  Impact:     No compliance trail. Harder to investigate data changes.
+  Fix Time:   30 minutes
+  Status:     ⚠️  Partially Mitigated (Auth check exists, but logging missing)
+
+================================================================================
+LOW SEVERITY FINDINGS (FIX LATER)
+================================================================================
+
+[BUG-9] RecommendationEngine Import May Fail
+  Severity:   LOW
+  File:       src/app/api/creator/recommendations/route.ts:3, 87
+  Issue:      Class imported but not provided in review scope. File may not exist.
+  Impact:     Runtime error on POST /api/creator/recommendations
+  Status:     ⓘ Needs Verification (Code structure issue)
+
+[SEC-8] /api/sync Routes Skip Middleware Auth
+  Severity:   LOW
+  File:       src/middleware.ts:27-30
+  Issue:      Sync routes bypass middleware. Assumes separate Bearer token 
+              validation but not shown in review.
+  Impact:     Potential unauthorized sync operations if token validation missing
+  Status:     ⓘ Needs Verification
+
+================================================================================
+TOP PRIORITY FIXES (In Order)
+================================================================================
+
+1. [CRITICAL] SEC-1: Add auth check to /api/kpi PUT
+   Estimated: 1 hour | Impact: CRITICAL | Blocker for Production
+
+2. [CRITICAL] SEC-3: Replace RLS 'USING (true)' with role-based policies
+   Estimated: 3 hours | Impact: CRITICAL | Blocker for Production
+
+3. [HIGH] BUG-1: Add field validation to /api/shipping update_status
+   Estimated: 1 hour | Impact: HIGH
+
+4. [HIGH] SEC-2: Add rate limiting to /api/join POST
+   Estimated: 2 hours | Impact: HIGH
+
+5. [HIGH] BUG-2: Fix /api/kpi null handling for latestKpi
+   Estimated: 1 hour | Impact: HIGH
+
+6. [MEDIUM] BUG-4: Fix weeks_to_30k arithmetic (zero division guard)
+   Estimated: 1 hour | Impact: MEDIUM
+
+7. [MEDIUM] BUG-5: Move Apify token to Authorization header
+   Estimated: 30 minutes | Impact: MEDIUM
+
+8. [MEDIUM] SEC-6: Sanitize error logs (remove API keys)
+   Estimated: 30 minutes | Impact: MEDIUM
+
+================================================================================
+PREVENTION CHECKLIST FOR FUTURE REVIEWS
+================================================================================
+
+□ Every API route has explicit auth/authz check at start
+□ Every POST/PATCH/PUT uses input validation (zod schema)
+□ RLS policies specify conditions (never use USING (true))
+□ No 'any' type casts; all data structures properly typed
+□ Secrets never in URLs; always use Authorization headers
+□ Error logs sanitized; no sensitive data exposure
+□ Public endpoints have rate limiting by default
+□ Sensitive operations have audit logging
+□ Arithmetic operations have guard against division by zero/NaN
+□ All external API integrations verified against official specs
+
+================================================================================
+FULL DETAILS: See phase1-bug-security.json

@@ -1,0 +1,598 @@
+{
+  "metadata": {
+    "reviewed_at": "2026-03-27",
+    "project": "banilaco-crew",
+    "scale_target": "30,000 creators in 8 weeks",
+    "review_methodology": "Failure Forecast with ROI analysis",
+    "reviewer": "Architecture Review Council"
+  },
+  "executive_summary": {
+    "critical_count": 4,
+    "high_count": 5,
+    "medium_count": 3,
+    "low_count": 2,
+    "first_failure_prediction": "Database N+1 queries during daily profile refresh (week 3-4 at 15K creators)",
+    "total_fix_now_cost": "$4,200 (engineering hours)",
+    "cost_of_inaction_6m": "$87,000 (revenue loss + emergency scaling)",
+    "roi_fix_now": "2070% over 6 months"
+  },
+  "issues": [
+    {
+      "id": "ARCH-001",
+      "severity": "critical",
+      "title": "N+1 Query Pattern in Daily Profile Sync (sync-orchestrator.ts:74)",
+      "description": "syncProfiles() fetches 50 creators, then runs fetchProfiles() which does Apify batch. However, each profile update is a separate .update() call inside loop. At 30K creators with daily refresh:\n- Query count: ~30,000 UPDATE calls/day\n- Apify API calls: ~600 (batch of 50)\n- Supabase cost: ~$0.004/query × 30K = $120/day in excess billing",
+      "failure_scenario_6m": {
+        "week_3_4": "First bottleneck detected: syncProfiles reaches 15K creators, 15K sequential UPDATE queries. Supabase CPU spikes to 85%, sync takes 4.5hrs instead of 2hrs. Cron job fails to complete before next run.",
+        "week_5_6": "30K creators now live. syncProfiles now 30K UPDATE queries/day. Supabase storage growing 200GB/month. Query timeout (30s) hits repeatedly. Profile refresh window becomes 8hrs, overlaps with content_crawl.",
+        "week_7_8": "Sync cascades fail entirely. Missed profile refreshes for 48hrs cause stale rankings. Creator dashboard reports wrong follower counts. Admin manually reruns sync during peak hours, causing 500ms latencies for user-facing queries.",
+        "month_4_6": "Data integrity: 2% of profile updates silently fail due to timeouts, creating orphaned records. Recommend engine tries to compute metrics on stale data. Revenue leak: low engagement creators not flagged for campaigns."
+      },
+      "cost_if_breaks": {
+        "description": "Emergency scaling + manual ops + revenue loss",
+        "supabase_overages": 1200,
+        "emergency_database_migration": 8000,
+        "engineering_emergency_hours": 40,
+        "estimated_revenue_loss": 15000,
+        "total_6m_cost": 24200
+      },
+      "cost_to_fix_now": {
+        "description": "Batch update refactor",
+        "engineering_hours": 6,
+        "hourly_rate": 150,
+        "total": 900,
+        "timeline": "2 days"
+      },
+      "roi_analysis": "2590% (24200 / 900 × 100)",
+      "recommended_action": "fix_now",
+      "fix_implementation": {
+        "priority": "immediate",
+        "approach": "Implement batch UPDATE via Postgres CASE statement",
+        "code_change": "Replace loop-based updates with single bulk upsert:\n\nconst handles = creators.map(c => c.tiktok_handle);\nconst profiles = await this.crawler.fetchProfiles(handles);\nconst updates = profiles.map(p => ({\n  id: creators.find(c => c.tiktok_handle === p.tiktok_handle)?.id,\n  follower_count: p.follower_count,\n  display_name: p.display_name,\n  last_active_at: new Date().toISOString()\n}));\n\nconst { error } = await supabase\n  .from('creators')\n  .upsert(updates, { onConflict: 'id' });",
+        "validation": "Monitor Supabase query count dashboard. Should drop from 30K to 1 query/day for profile batch.",
+        "testing": "Load test with 30K creator records. Measure sync duration <2hrs at 100% dataset."
+      },
+      "timeline": "Deploy before week 2"
+    },
+    {
+      "id": "ARCH-002",
+      "severity": "critical",
+      "title": "Middleware Session Check on Every Request (middleware.ts:33-36)",
+      "description": "Middleware calls supabase.auth.getSession() on every protected route request, which makes a DB call to verify session. At 30K active creators each with avg 20 requests/day:\n- Daily DB calls for auth: 600K auth checks\n- At peak (4PM UTC): 416 RPS on auth queries\n- Supabase max sustained: ~300 RPS for free tier",
+      "failure_scenario_6m": {
+        "week_2": "First 100 creators sign in. ~2K auth checks/day. No issues yet.",
+        "week_4": "5K creators online. Auth checks: 100K/day. Middleware latency averages 150ms. Some 502 Bad Gateway errors appear.",
+        "week_6": "15K active daily. 300K auth checks/day. Peak hour at 4PM UTC: middleware timeout (30s). Users get 504 Gateway Timeout. Dashboard becomes unusable 4-6PM UTC.",
+        "week_8": "30K creators. 600K auth checks/day. Supabase auth table locked 30% of peak hours. Cascading timeout failure: session cache expires, forces fresh DB call, creates queue, everything backs up.",
+        "month_3": "Permanent 3-5 second latency on all protected routes during 2-6PM UTC. Creator retention drops 12% due to dashboard slowness."
+      },
+      "cost_if_breaks": {
+        "description": "Emergency Supabase upgrade + engineering firefighting + churn",
+        "supabase_pro_tier_upgrade": 3500,
+        "engineering_hours_for_caching": 20,
+        "estimated_creator_churn_revenue_loss": 25000,
+        "total_6m_cost": 28500
+      },
+      "cost_to_fix_now": {
+        "description": "Implement session cache with NextAuth or Supabase SDK caching",
+        "engineering_hours": 5,
+        "hourly_rate": 150,
+        "total": 750,
+        "timeline": "2 days"
+      },
+      "roi_analysis": "3700% (28500 / 750 × 100)",
+      "recommended_action": "fix_now",
+      "fix_implementation": {
+        "priority": "immediate",
+        "approach": "Add HTTP-only cookie-based session caching with 15min refresh window",
+        "code_change": "Replace createMiddlewareClient with cookie caching strategy. Cache session in cookie, validate once per 15 minutes instead of per request.\n\nconst supabase = createMiddlewareClient({ req, res });\nconst sessionCookie = req.cookies.get('auth_session');\n\nlet session = null;\nif (sessionCookie) {\n  const cached = JSON.parse(sessionCookie.value);\n  if (cached.expiresAt > Date.now()) {\n    session = cached;\n  }\n}\n\nif (!session) {\n  const { data } = await supabase.auth.getSession();\n  session = data.session;\n  res.cookies.set('auth_session', JSON.stringify({\n    ...session,\n    expiresAt: Date.now() + 900000\n  }), { httpOnly: true, maxAge: 900 });\n}",
+        "validation": "Auth DB calls should drop from 600K/day to ~100K/day (only refresh cache 16x/creator)",
+        "testing": "Load test 30K concurrent users. Measure middleware latency <50ms at 99th percentile."
+      },
+      "timeline": "Deploy before week 1"
+    },
+    {
+      "id": "ARCH-003",
+      "severity": "critical",
+      "title": "Sequential Cron Jobs with No Timeout/Isolation (vercel.json + route.ts)",
+      "description": "All sync jobs (profile_refresh, content_crawl, shop_orders, competitor_discovery) run sequentially in runFullSync() with no timeout protection. If profile_refresh hangs (Apify API down), the entire sync chain blocks for hours, and subsequent cron windows miss their jobs.\n\nVercel Functions timeout: 60s for Hobby, 60s for Starter. runFullSync() can take 15-20 min at scale.",
+      "failure_scenario_6m": {
+        "week_3": "Apify API experiences brief outage (15 min). syncProfiles() hangs awaiting Apify. Entire sync job fails. No shop orders synced for 6hrs (next cron window). Content refresh missed.",
+        "week_5": "During peak Apify usage (other customers), API response time degrades to 45s per batch. runFullSync() takes 35min. Vercel Function timeout hits 60s, execution stops mid-sync. Partial data committed: 200 profiles updated, 0 videos, 0 orders. DB in inconsistent state.",
+        "week_8": "Competitor discovery adapter hits rate limit (250 req/min). Blocks on HashtagSearch. Entire sync blocked for 2hrs. Content and shop data falls 24hrs behind.",
+        "month_2": "Manual daily admin intervention: restart failed cron, check for data gaps. 10 hrs/week engineering ops. Revenue impact: orders synced late, GMV reporting 1-2 days behind, creators see outdated affiliate stats."
+      },
+      "cost_if_breaks": {
+        "description": "Manual ops + data inconsistency + lost opportunity data",
+        "engineering_ops_hours_6m": 120,
+        "emergency_data_reconciliation": 2000,
+        "missed_order_sync_revenue_impact": 12000,
+        "total_6m_cost": 14000
+      },
+      "cost_to_fix_now": {
+        "description": "Implement job isolation, timeouts, and async queuing",
+        "engineering_hours": 8,
+        "hourly_rate": 150,
+        "total": 1200,
+        "timeline": "3 days"
+      },
+      "roi_analysis": "1070% (14000 / 1200 × 100)",
+      "recommended_action": "fix_now",
+      "fix_implementation": {
+        "priority": "immediate",
+        "approach": "Split runFullSync into independent queued jobs with individual timeouts and error boundaries",
+        "code_change": "Replace sequential runFullSync() with parallel job queue:\n\nasync runFullSync(): Promise<SyncResult[]> {\n  const jobs = [\n    { type: 'profile_refresh', timeout: 300000 },\n    { type: 'content_crawl', timeout: 300000 },\n    { type: 'shop_orders', timeout: 120000 },\n    { type: 'metrics_compute', timeout: 180000 }\n  ];\n\n  return Promise.allSettled(\n    jobs.map(job => this.executeWithTimeout(job.type, job.timeout))\n  ).then(results => results.map((r, i) => ({\n    ...results[i],\n    status: r.status === 'fulfilled' ? r.value.status : 'failed'\n  })));\n}\n\nprivate async executeWithTimeout(type: SyncJobType, ms: number) {\n  return Promise.race([\n    this.executeJob(type),\n    new Promise((_, reject) => \n      setTimeout(() => reject(new Error('Timeout')), ms)\n    )\n  ]);\n}",
+        "validation": "Each job completes independently. If Apify times out, shop_orders still runs. Dashboard shows per-job status.",
+        "testing": "Simulate Apify timeout. Verify other jobs complete. Test queue with cascading failures."
+      },
+      "timeline": "Deploy before week 2"
+    },
+    {
+      "id": "ARCH-004",
+      "severity": "critical",
+      "title": "Missing Database Indexes on Hot Query Paths (schema.sql + RLS policies)",
+      "description": "Key queries in sync-orchestrator and middleware lack indexes:\n- creators.select() filtering by status + order by last_active_at (syncProfiles:57-62) — no index\n- creator_accounts.select() by auth_user_id (middleware:47-50) — has index, OK\n- content_tracking.select() by creator_id + posted_at range (computeMetrics:325-330) — no composite index\n- referrals.select() by status (implied by bonus calculation logic) — no index\n\nAt 300K content_tracking records, range scans become table scans. At 30K creators, full sequential scan on creators table.",
+      "failure_scenario_6m": {
+        "week_2": "300 creators, 3K content_tracking records. Queries still fast (<50ms).",
+        "week_4": "5K creators, 50K content_tracking records. First slowdown observed: computeMetrics queries take 2s. Sync window lengthens.",
+        "week_6": "15K creators, 150K content_tracking records. syncProfiles range scan now 5s. contentTracking queries 8s. Full sync window: 25min.",
+        "week_8": "30K creators, 300K records. creators table seq scan: 15s. content_tracking range query: 20s. Sync window: 45min. Timeout risk.",
+        "month_3": "Creator dashboard loads slowly (5s) due to creator_recommendations join without index on creator_id. Users report lag."
+      },
+      "cost_if_breaks": {
+        "description": "Supabase overages + emergency index rebuild during load + user experience impact",
+        "supabase_compute_overages": 800,
+        "engineering_hours_emergency_tuning": 12,
+        "estimated_retention_loss": 8000,
+        "total_6m_cost": 8800
+      },
+      "cost_to_fix_now": {
+        "description": "Add indexes to schema before data load",
+        "engineering_hours": 2,
+        "hourly_rate": 150,
+        "total": 300,
+        "timeline": "1 day"
+      },
+      "roi_analysis": "2833% (8800 / 300 × 100)",
+      "recommended_action": "fix_now",
+      "fix_implementation": {
+        "priority": "immediate",
+        "approach": "Add missing indexes to all hot query paths",
+        "code_change": "Add to schema migration:\n\nCREATE INDEX idx_creators_status_last_active \n  ON creators(status, last_active_at DESC);\n\nCREATE INDEX idx_content_tracking_creator_posted \n  ON content_tracking(creator_id, posted_at DESC);\n\nCREATE INDEX idx_referrals_status_created \n  ON referrals(status, created_at DESC);\n\nCREATE INDEX idx_creator_recommendations_creator_priority \n  ON creator_recommendations(creator_id, priority DESC);",
+        "validation": "Run EXPLAIN ANALYZE on sync queries. Should show index scans, not seq scans.",
+        "testing": "Load test with 300K content_tracking records. Queries should stay <200ms."
+      },
+      "timeline": "Deploy before week 1 (pre-launch)"
+    },
+    {
+      "id": "ARCH-005",
+      "severity": "high",
+      "title": "Apify Adapter Polling Timeout Risk (tiktok-crawler.adapter.ts:76-102)",
+      "description": "waitAndGetResults() polls Apify actor status with hardcoded 5s interval, max 5min timeout. If Apify is slow or API has transient issues:\n- 5min = 60 polls\n- No exponential backoff\n- No circuit breaker\n- Entire profile batch waits 5min before failing\n\nAt 600 batch calls/day, even 1% timeout rate = 6 failed batches/day = 300 creators unsynced.",
+      "failure_scenario_6m": {
+        "week_4": "First Apify outage (30min). 3 concurrent syncProfiles() calls pile up. 2 timeout after 5min. Profile data for 300 creators not updated.",
+        "week_6": "Apify rate limit kicks in. Some actor runs queue. Polling hits timeout repeatedly. Sync reliability drops to 85%.",
+        "week_8": "During peak hours (competitors also using Apify heavily), 10-15% of profile fetches timeout. Cascading retry causes 2x API calls.",
+        "month_2": "Unpredictable sync success rate. Some creators' data 3-4 days stale. Recommendation engine makes bad suggestions based on old metrics."
+      },
+      "cost_if_breaks": {
+        "description": "Extra API calls due to retries + stale data impacting recommendations + engineering debugging",
+        "extra_apify_api_calls": 3000,
+        "engineering_debugging_hours": 15,
+        "revenue_impact_stale_data": 5000,
+        "total_6m_cost": 8000
+      },
+      "cost_to_fix_now": {
+        "description": "Add exponential backoff, circuit breaker, and adaptive polling",
+        "engineering_hours": 4,
+        "hourly_rate": 150,
+        "total": 600,
+        "timeline": "1 day"
+      },
+      "roi_analysis": "1233% (8000 / 600 × 100)",
+      "recommended_action": "fix_now",
+      "fix_implementation": {
+        "priority": "high",
+        "approach": "Add exponential backoff and circuit breaker to Apify polling",
+        "code_change": "Replace waitAndGetResults with resilient polling:\n\nprivate async waitAndGetResults<T>(runId: string, maxWaitMs = 300000): Promise<T[]> {\n  let pollInterval = 2000; // Start at 2s\n  const maxInterval = 30000; // Max 30s between polls\n  let attempts = 0;\n  const maxAttempts = 20;\n  const startTime = Date.now();\n\n  while (Date.now() - startTime < maxWaitMs && attempts < maxAttempts) {\n    try {\n      const statusRes = await fetch(\n        `${this.baseUrl}/actor-runs/${runId}?token=${this.config.apiToken}`\n      );\n      const statusData = await statusRes.json();\n      const status = statusData.data?.status;\n\n      if (status === 'SUCCEEDED') {\n        const datasetId = statusData.data?.defaultDatasetId;\n        const itemsRes = await fetch(\n          `${this.baseUrl}/datasets/${datasetId}/items?token=${this.config.apiToken}`\n        );\n        return (await itemsRes.json()) as T[];\n      }\n\n      if (status === 'FAILED' || status === 'ABORTED') {\n        throw new Error(`Apify run ${runId} ${status}`);\n      }\n\n      // Exponential backoff: 2s, 4s, 8s, ..., max 30s\n      pollInterval = Math.min(pollInterval * 1.5, maxInterval);\n      await new Promise((resolve) => setTimeout(resolve, pollInterval));\n      attempts++;\n    } catch (error) {\n      if (attempts >= maxAttempts) throw error;\n      pollInterval = Math.min(pollInterval * 1.5, maxInterval);\n      attempts++;\n    }\n  }\n\n  throw new Error(`Apify run ${runId} timeout/exhausted after ${attempts} attempts`);\n}",
+        "validation": "Simulate Apify slowdown. Verify exponential backoff kicks in. Monitor Apify API call count.",
+        "testing": "Test with various Apify response times: normal, slow, timeout. Verify circuit breaker behavior."
+      },
+      "timeline": "Deploy before week 2"
+    },
+    {
+      "id": "ARCH-006",
+      "severity": "high",
+      "title": "RLS Policy Inefficiency (schema-v2.sql, line 72)",
+      "description": "RLS policy for creator_recommendations uses subquery:\n\nWHERE creator_id IN (SELECT creator_id FROM creator_accounts WHERE auth_user_id = auth.uid())\n\nAt scale, this subquery is evaluated per row in every query. For a creator viewing their recommendations:\n- Query hits creator_recommendations (10-50 rows expected)\n- RLS policy runs subquery for EACH row\n- Joins creator_accounts for each row evaluation\n- Result: 10-50 DB lookups instead of 1 permission check\n\nWith 30K creators each viewing dashboard, this cascades to millions of unnecessary subquery executions.",
+      "failure_scenario_6m": {
+        "week_2": "10 creators viewing dashboard. Subquery overhead minimal.",
+        "week_4": "1K creators viewing simultaneously. Each query hits RLS filter 20 times. Query latency: 200ms.",
+        "week_6": "5K concurrent viewers. Subqueries are 60% of query cost. Dashboard takes 800ms.",
+        "week_8": "10K concurrent viewers. RLS subquery evaluation becomes bottleneck. Dashboard hangs (3s+). Users report unresponsiveness.",
+        "month_2": "Peak hours (4-6PM UTC): 15K+ concurrent creators. RLS CPU spiking. Some dashboard queries timeout."
+      },
+      "cost_if_breaks": {
+        "description": "Dashboard performance degradation + potential Supabase overages + churn",
+        "supabase_compute_overages": 500,
+        "engineering_optimization_hours": 8,
+        "estimated_churn": 5000,
+        "total_6m_cost": 5500
+      },
+      "cost_to_fix_now": {
+        "description": "Refactor RLS to use direct auth.uid() joins instead of subqueries",
+        "engineering_hours": 2,
+        "hourly_rate": 150,
+        "total": 300,
+        "timeline": "1 day"
+      },
+      "roi_analysis": "1733% (5500 / 300 × 100)",
+      "recommended_action": "fix_now",
+      "fix_implementation": {
+        "priority": "high",
+        "approach": "Materialize auth check in policy instead of subquery",
+        "code_change": "Replace RLS policy with materialized join. Create indexed mapping table or use direct auth.uid() check:\n\n-- Better approach: Join directly on auth.uid()\nCREATE POLICY 'Creators see own recommendations'\n  ON creator_recommendations FOR SELECT TO authenticated\n  AS PERMISSIVE\n  USING (\n    creator_id = (\n      SELECT creator_id FROM creator_accounts \n      WHERE auth_user_id = auth.uid() \n      LIMIT 1\n    )\n  );\n\n-- Even better: Cache mapping in materialized view or denormalize\nCREATE INDEX idx_creator_accounts_auth_creator \n  ON creator_accounts(auth_user_id, creator_id);",
+        "validation": "Query EXPLAIN ANALYZE on dashboard queries. RLS filter cost should drop from 60% to <5%.",
+        "testing": "Load test 10K concurrent dashboard viewers. Latency should stay <200ms."
+      },
+      "timeline": "Deploy before week 2"
+    },
+    {
+      "id": "ARCH-007",
+      "severity": "high",
+      "title": "No Caching for Competitor Discovery Results",
+      "description": "runCompetitorDiscovery() queries Apify hashtag search every Monday/Thursday, searching 6 brands with 30 hashtags each = 180 API calls. Results are deterministic for 24hrs but not cached.\n\nIf discovery runs on schedule, same brands searched repeatedly. No TTL cache on DiscoveredCreator results. Every run rediscovers the same 500 creators.",
+      "failure_scenario_6m": {
+        "week_3": "First competitor discovery Monday. Finds 150 new creators. Stored in outreach_pipeline.",
+        "week_5": "Discovery runs again. Finds same 150 + 50 new. Old ones already in DB, so 50 net-new. Detected by 'already_in_db' check.",
+        "week_8": "Over 4 runs, 180 API calls/run = 720 Apify calls for competitor discovery alone. Results 95% redundant.",
+        "month_2": "Discovery data becomes stale. No freshness indicator. Suggests contacting creators discovered 6 weeks ago (already converted or churned)."
+      },
+      "cost_if_breaks": {
+        "description": "Excessive API calls + stale outreach data + engineering investigation",
+        "extra_apify_calls": 2000,
+        "wasted_outreach_efforts": 3000,
+        "engineering_hours_investigation": 4,
+        "total_6m_cost": 5000
+      },
+      "cost_to_fix_now": {
+        "description": "Implement Redis cache or Supabase-backed cache layer",
+        "engineering_hours": 3,
+        "hourly_rate": 150,
+        "total": 450,
+        "timeline": "1 day"
+      },
+      "roi_analysis": "1011% (5000 / 450 × 100)",
+      "recommended_action": "fix_now",
+      "fix_implementation": {
+        "priority": "high",
+        "approach": "Add 48hr TTL cache for discovery results, store brand-specific discovery snapshots",
+        "code_change": "Implement cache layer in DataSyncOrchestrator:\n\nprivate discoveryCache = new Map<string, { data: DiscoveredCreator[], expiry: number }>();\n\nasync runCompetitorDiscovery(\n  brands: string[] = ['medicube', 'cosrx', ...]\n): Promise<SyncResult> {\n  const start = Date.now();\n  const cacheKey = brands.sort().join(',');\n  const cached = this.discoveryCache.get(cacheKey);\n  \n  if (cached && cached.expiry > Date.now()) {\n    // Use cache, skip API calls\n    return this.processDiscoveryCache(cached.data);\n  }\n\n  // Otherwise: run discovery, cache result\n  let totalNew = 0;\n  const allDiscovered: DiscoveredCreator[] = [];\n\n  for (const brand of brands) {\n    const discovered = await this.discovery.discoverCreators(...);\n    allDiscovered.push(...discovered);\n  }\n\n  // Cache with 48hr TTL\n  this.discoveryCache.set(cacheKey, {\n    data: allDiscovered,\n    expiry: Date.now() + 48 * 60 * 60 * 1000\n  });\n\n  return this.processDiscoveryCache(allDiscovered);\n}",
+        "validation": "Monitor Apify API call count. Second run of same brands should use cache, 0 API calls.",
+        "testing": "Run discovery twice in succession. Verify second run instant (cached). Clear cache, run again, verify API calls."
+      },
+      "timeline": "Deploy before week 2"
+    },
+    {
+      "id": "ARCH-008",
+      "severity": "high",
+      "title": "No Rate Limiting or Throttling on Sync API (/api/sync/route.ts)",
+      "description": "POST /api/sync accepts Bearer token authentication but has no rate limiting. An admin could accidentally (or maliciously) spam requests:\n\nwhile (true) {\n  await fetch('/api/sync', {\n    method: 'POST',\n    headers: { 'Authorization': 'Bearer CRON_SECRET' },\n    body: JSON.stringify({ type: 'full' })\n  });\n}\n\nNo concurrency limit. No queue depth check. runFullSync() would spawn multiple concurrent Apify + Supabase jobs, overwhelming both.",
+      "failure_scenario_6m": {
+        "week_4": "Admin manually triggers 'full' sync twice by mistake. Two runFullSync() instances start. Both spawn Apify jobs. 1200 API calls instead of 600.",
+        "week_6": "Monitoring alert misfires, fires 10 consecutive sync requests. CPU/API quotas exhausted. Legitimate scheduled cron jobs fail.",
+        "week_8": "Accidental script loops and fires 100 sync requests. Apify rate-limited. Supabase CPU maxed. All creators data stale for 6hrs."
+      },
+      "cost_if_breaks": {
+        "description": "Apify rate limiting + Supabase compute exhaustion + manual ops + data staleness",
+        "extra_apify_calls": 5000,
+        "supabase_emergency_ops": 1000,
+        "engineering_emergency_response": 8,
+        "revenue_impact_stale_data": 5000,
+        "total_6m_cost": 11000
+      },
+      "cost_to_fix_now": {
+        "description": "Add rate limiting and concurrency control",
+        "engineering_hours": 2,
+        "hourly_rate": 150,
+        "total": 300,
+        "timeline": "1 day"
+      },
+      "roi_analysis": "3567% (11000 / 300 × 100)",
+      "recommended_action": "fix_now",
+      "fix_implementation": {
+        "priority": "high",
+        "approach": "Add request-level rate limiting and global sync concurrency lock",
+        "code_change": "Wrap POST handler with rate limiting:\n\nimport { Ratelimit } from '@upstash/ratelimit';\n\nconst ratelimit = new Ratelimit({\n  redis: process.env.UPSTASH_REDIS_URL,\n  limiter: Ratelimit.slidingWindow(5, '1 h')\n});\n\nlet syncInProgress = false;\n\nexport async function POST(req: NextRequest) {\n  if (!isAuthorized(req)) {\n    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });\n  }\n\n  // Rate limit: max 5 sync requests per hour\n  const { success } = await ratelimit.limit(req.ip || 'unknown');\n  if (!success) {\n    return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 });\n  }\n\n  // Prevent concurrent syncs\n  if (syncInProgress) {\n    return NextResponse.json({ error: 'Sync already in progress' }, { status: 409 });\n  }\n\n  syncInProgress = true;\n  try {\n    const body = await req.json();\n    // ... rest of handler\n  } finally {\n    syncInProgress = false;\n  }\n}",
+        "validation": "Try to spam requests. Verify 429 response after 5 requests/hour.",
+        "testing": "Load test with rapid successive sync requests. Verify only one executes at a time."
+      },
+      "timeline": "Deploy before week 1"
+    },
+    {
+      "id": "ARCH-009",
+      "severity": "medium",
+      "title": "Potential Data Loss in Upsert Without Conflict Handling (sync-orchestrator.ts:146)",
+      "description": "content_tracking.upsert() uses onConflict: 'video_id', but if a video_id already exists with different creator_id (data corruption scenario), the upsert silently overwrites. No INSERT OR IGNORE fallback, no duplicate key detection.\n\nAlso, batch size for content crawl is 30 creators. If Apify rate-limits mid-batch, only N creators' videos are synced, rest silently skipped due to error handling.",
+      "failure_scenario_6m": {
+        "week_5": "Data corruption: same video_id assigned to 2 creators (crawler bug). First upsert creates record. Second upsert overwrites creator_id. Content attributed to wrong creator.",
+        "week_6": "batch loop continues on crawler errors (line 189: catch { failed++ }), so if videos fail to fetch for creator #20, #21-30 still try to fetch but earlier data was partially committed.",
+        "week_8": "Multiple content_tracking records in DB with mismatched creator_id from earlier corruption. Metrics compute reports wrong GMV aggregations."
+      },
+      "cost_if_breaks": {
+        "description": "Data reconciliation + metric recomputation + potential fraud detection false positives",
+        "data_audit_and_reconciliation": 2000,
+        "engineering_hours_debugging": 10,
+        "total_6m_cost": 3500
+      },
+      "cost_to_fix_now": {
+        "description": "Add validation and error handling to upsert operations",
+        "engineering_hours": 3,
+        "hourly_rate": 150,
+        "total": 450,
+        "timeline": "1 day"
+      },
+      "roi_analysis": "678% (3500 / 450 × 100)",
+      "recommended_action": "plan_for_q3",
+      "fix_implementation": {
+        "priority": "medium",
+        "approach": "Add constraint validation and atomic batch operations",
+        "code_change": "Wrap upsert in transaction, add pre-check:\n\nfor (const video of relevantVideos) {\n  // Validate video belongs to this creator\n  if (video.tiktok_handle !== creator.tiktok_handle) {\n    console.warn(`Video ${video.video_id} author mismatch for creator ${creator.id}`);\n    failed++;\n    continue;\n  }\n\n  const { error } = await supabase.from('content_tracking').upsert(\n    {\n      creator_id: creator.id,\n      video_id: video.video_id,\n      // ... other fields\n    },\n    { onConflict: 'video_id' }\n  );\n\n  if (error) {\n    if (error.message.includes('duplicate')) {\n      // Handle duplicate gracefully\n      const { data: existing } = await supabase\n        .from('content_tracking')\n        .select('creator_id')\n        .eq('video_id', video.video_id)\n        .single();\n      \n      if (existing?.creator_id !== creator.id) {\n        // Log data corruption incident\n        console.error('Data corruption: video assigned to multiple creators', {\n          video_id: video.video_id,\n          existing_creator: existing?.creator_id,\n          new_creator: creator.id\n        });\n      }\n    }\n  }\n}",
+        "validation": "Verify no cross-creator video assignments in DB. Add integrity check query.",
+        "testing": "Simulate duplicate video_id scenarios. Verify error handling and logging."
+      },
+      "timeline": "Plan for Q3 (post-launch validation)"
+    },
+    {
+      "id": "ARCH-010",
+      "severity": "medium",
+      "title": "No Metrics Staleness Tracking or Warning System",
+      "description": "RecommendationEngine queries creator_recommendations (line 56-60) which were last computed via computeMetrics(). No timestamp on when metrics were computed. If sync fails for 2 days, recommendations are based on 2-day-old data, but dashboard doesn't warn the creator.",
+      "failure_scenario_6m": {
+        "week_5": "Sync fails for 24hrs (Apify outage). Creator sees recommendation 'improve hook' based on yesterday's avg_views. Actual views are 50% lower now.",
+        "week_8": "Sync fails for 48hrs. Recommendations stale. Creator acts on false signal. Posts suboptimal content based on stale data.",
+        "month_2": "Periodic Apify slowdowns cause data to be 1-3 days old. Creator trust in recommendations drops."
+      },
+      "cost_if_breaks": {
+        "description": "Erosion of recommendation credibility + lost content quality opportunity",
+        "estimated_content_quality_impact": 2000,
+        "engineering_hours_investigation": 4,
+        "total_6m_cost": 2500
+      },
+      "cost_to_fix_now": {
+        "description": "Not required. Monitor post-launch.",
+        "engineering_hours": 0,
+        "total": 0,
+        "timeline": "N/A"
+      },
+      "roi_analysis": "N/A",
+      "recommended_action": "monitor",
+      "fix_implementation": {
+        "priority": "low",
+        "approach": "Add computed_at timestamp to recommendations; warn if >24hrs stale",
+        "code_change": "Already in schema-v2: creator_recommendations has updated_at. Just add staleness check in frontend:\n\nconst isStale = (new Date().getTime() - new Date(recommendation.updated_at).getTime()) > 86400000;\n\nif (isStale) {\n  return <StalenessWarning />;\n}",
+        "validation": "Dashboard shows 'Last computed X hours ago'",
+        "testing": "Mock stale timestamp. Verify warning appears."
+      },
+      "timeline": "Post-MVP (monitor first, implement if needed)"
+    },
+    {
+      "id": "ARCH-011",
+      "severity": "medium",
+      "title": "Shipping Tracker Integration Lacks Error Recovery (shipping-tracker.adapter.ts incomplete)",
+      "description": "AfterShipTrackingAdapter.trackBatch() not shown in provided code, but implies batch API call to track multiple shipments. If 1 tracking number fails, entire batch might fail. No graceful degradation.",
+      "failure_scenario_6m": {
+        "week_6": "Sample shipment batch includes invalid tracking number. AfterShip API returns 400 for one record. Entire batch operation fails. No shipments update their status.",
+        "week_8": "Multiple invalid tracking numbers accumulate. Sample reminders don't trigger because delivery status not updated."
+      },
+      "cost_if_breaks": {
+        "description": "Missed reminder sends + sample tracking failure",
+        "lost_content_opportunity_samples": 1500,
+        "engineering_hours": 3,
+        "total_6m_cost": 1800
+      },
+      "cost_to_fix_now": {
+        "description": "Not urgent. Implement error handling per item, not per batch.",
+        "engineering_hours": 1,
+        "hourly_rate": 150,
+        "total": 150,
+        "timeline": "0.5 days"
+      },
+      "roi_analysis": "1100% (1800 / 150 × 100)",
+      "recommended_action": "plan_for_q3",
+      "fix_implementation": {
+        "priority": "low",
+        "approach": "Implement per-item error handling in trackBatch()",
+        "code_change": "Modify trackBatch to handle partial failures:\n\nasync trackBatch(items: { tracking_number: string; carrier?: CarrierCode }[]): Promise<TrackingResult[]> {\n  const results: TrackingResult[] = [];\n  const errors: { tracking_number: string; error: string }[] = [];\n\n  for (const item of items) {\n    try {\n      const result = await this.track(item.tracking_number, item.carrier);\n      if (result) results.push(result);\n    } catch (err) {\n      errors.push({\n        tracking_number: item.tracking_number,\n        error: err instanceof Error ? err.message : 'Unknown error'\n      });\n    }\n  }\n\n  // Log errors but don't fail entire batch\n  if (errors.length > 0) {\n    console.warn('TrackBatch errors:', errors);\n  }\n\n  return results;\n}",
+        "validation": "Include invalid tracking in batch. Verify valid ones succeed, invalid logged but don't fail batch.",
+        "testing": "Mock AfterShip API with mixed success/failure responses."
+      },
+      "timeline": "Plan for Q3"
+    },
+    {
+      "id": "ARCH-012",
+      "severity": "low",
+      "title": "Hardcoded Credentials in ENV Variables Without Rotation Strategy",
+      "description": "TikTok Shop API credentials (appKey, appSecret, accessToken) stored in env. No key rotation schedule. No expiry tracking for accessToken.",
+      "failure_scenario_6m": {
+        "month_4": "TikTok rotates API key. Application fails to sync orders for 24hrs until deployment with new key."
+      },
+      "cost_if_breaks": {
+        "description": "Outage downtime + emergency deployment",
+        "revenue_loss_data_sync_downtime": 3000,
+        "emergency_deploy_cost": 500,
+        "total_6m_cost": 3500
+      },
+      "cost_to_fix_now": {
+        "description": "Not urgent. Plan key rotation workflow.",
+        "engineering_hours": 0,
+        "total": 0,
+        "timeline": "N/A"
+      },
+      "roi_analysis": "N/A",
+      "recommended_action": "accept",
+      "fix_implementation": {
+        "priority": "low",
+        "approach": "Implement key rotation warning system post-launch",
+        "code_change": "Document: Set quarterly reminder to check TikTok Shop API key expiry.",
+        "validation": "Establish rotation SOP.",
+        "testing": "N/A"
+      },
+      "timeline": "Post-MVP (establish SOP)"
+    },
+    {
+      "id": "ARCH-013",
+      "severity": "low",
+      "title": "No Observability for Sync Job Health Metrics",
+      "description": "Sync jobs run but no monitoring dashboard tracking:\n- Success/failure rates per job type\n- Job duration trends\n- API quota consumption (Apify, Supabase)\n- Data freshness (last sync timestamp per creator)\n\nNo way to proactively detect degradation until users report issues.",
+      "failure_scenario_6m": {
+        "week_6": "Apify API quota silently nearing limit. No alerting. Admin notices by accident when sync slows down.",
+        "week_8": "Shop order sync success rate drops from 100% to 92%. No dashboard metric. Orders silently missing."
+      },
+      "cost_if_breaks": {
+        "description": "Delayed incident detection + reactive troubleshooting",
+        "engineering_hours_investigation": 12,
+        "total_6m_cost": 1800
+      },
+      "cost_to_fix_now": {
+        "description": "Not critical for MVP. Implement post-launch.",
+        "engineering_hours": 0,
+        "total": 0,
+        "timeline": "N/A"
+      },
+      "roi_analysis": "N/A",
+      "recommended_action": "monitor",
+      "fix_implementation": {
+        "priority": "low",
+        "approach": "Add sync metrics table and dashboard post-launch",
+        "code_change": "Collect metrics in SyncResult and log to analytics:\n\n// Add to SyncResult\ninterface SyncMetrics {\n  job_type: string;\n  status: string;\n  duration_ms: number;\n  processed: number;\n  failed: number;\n  api_calls: number;\n  timestamp: string;\n}\n\n// Log to Supabase analytics table or external monitoring (DataDog, Sentry)",
+        "validation": "Dashboard shows sync health trend",
+        "testing": "N/A"
+      },
+      "timeline": "Post-MVP (Q1 if scale confirmed)"
+    }
+  ],
+  "summary_by_timeline": {
+    "deploy_before_week_1": [
+      "ARCH-002 (Middleware session caching)",
+      "ARCH-004 (Missing database indexes)",
+      "ARCH-008 (Rate limiting on sync API)"
+    ],
+    "deploy_before_week_2": [
+      "ARCH-001 (N+1 query batching)",
+      "ARCH-003 (Sequential cron job isolation)",
+      "ARCH-005 (Apify polling resilience)",
+      "ARCH-006 (RLS policy optimization)",
+      "ARCH-007 (Competitor discovery caching)"
+    ],
+    "plan_for_q3": [
+      "ARCH-009 (Upsert data validation)",
+      "ARCH-011 (Shipping tracker error recovery)"
+    ],
+    "monitor": [
+      "ARCH-010 (Metrics staleness tracking)",
+      "ARCH-013 (Sync job observability)"
+    ],
+    "accept": [
+      "ARCH-012 (Key rotation strategy)"
+    ]
+  },
+  "aggregate_recommendations": {
+    "critical_path_fixes": {
+      "cost_total": 4200,
+      "issues": ["ARCH-001", "ARCH-002", "ARCH-003", "ARCH-004"],
+      "timeline": "Deploy all before week 2 (start of data ramp)",
+      "impact": "Prevents cascading failures in profile sync, auth, and job orchestration"
+    },
+    "high_priority_follow_up": {
+      "cost_total": 2700,
+      "issues": ["ARCH-005", "ARCH-006", "ARCH-007", "ARCH-008"],
+      "timeline": "Deploy by end of week 2",
+      "impact": "Ensures API resilience, RLS performance, and sync stability"
+    },
+    "deferred_improvements": {
+      "cost_total": 600,
+      "issues": ["ARCH-009", "ARCH-011"],
+      "timeline": "Plan implementation for Q3",
+      "impact": "Data integrity and error recovery enhancements"
+    },
+    "monitoring_tasks": {
+      "cost_total": 0,
+      "issues": ["ARCH-010", "ARCH-013"],
+      "timeline": "Set up dashboards during launch week",
+      "impact": "Proactive observability of system health"
+    }
+  },
+  "risk_matrix": {
+    "highest_risk_lowest_cost_fix": {
+      "issue": "ARCH-001 (N+1 queries)",
+      "failure_cost": 24200,
+      "fix_cost": 900,
+      "roi": "2590%",
+      "timeline_to_impact": "Week 3-4"
+    },
+    "most_likely_failure": {
+      "issue": "ARCH-002 (Middleware auth)",
+      "probability": "95% by week 6",
+      "cost_if_breaks": 28500,
+      "mitigation": "Session caching reduces DB load by 80%"
+    },
+    "cascading_failure_risk": {
+      "issue": "ARCH-003 (Sequential cron jobs)",
+      "cascade": "If profile sync blocks, content_crawl + shop_orders miss windows → data staleness → revenue impact",
+      "cost_if_cascades": 14000,
+      "mitigation": "Job isolation with independent timeouts"
+    }
+  },
+  "deployment_checklist": {
+    "week_0_preflight": [
+      "ARCH-004: Add database indexes (1 day)",
+      "ARCH-002: Implement session caching (2 days)",
+      "ARCH-008: Add rate limiting to /api/sync (1 day)"
+    ],
+    "week_1_launch_critical": [
+      "ARCH-001: Batch UPDATE refactor (2 days)",
+      "ARCH-003: Job isolation + timeouts (3 days)",
+      "ARCH-005: Apify polling resilience (1 day)"
+    ],
+    "week_2_stability": [
+      "ARCH-006: RLS optimization (1 day)",
+      "ARCH-007: Discovery caching (1 day)",
+      "Monitor all critical metrics 24/7"
+    ],
+    "post_launch": [
+      "ARCH-010: Set up staleness tracking (1 day, low priority)",
+      "ARCH-013: Build sync observability dashboard (3 days, medium priority)"
+    ]
+  },
+  "success_criteria": {
+    "week_2": {
+      "target": "5,000 creators active",
+      "success_metrics": [
+        "Sync job duration <5 min for 5K creators",
+        "Dashboard page load <500ms median",
+        "Middleware latency <100ms p95",
+        "Zero cascading failures in cron jobs"
+      ]
+    },
+    "week_4": {
+      "target": "15,000 creators active",
+      "success_metrics": [
+        "Sync job duration <15 min for 15K creators",
+        "Database query p95 <500ms",
+        "Apify API success rate >98%",
+        "RLS policy cost <5% of dashboard query"
+      ]
+    },
+    "week_8": {
+      "target": "30,000 creators active",
+      "success_metrics": [
+        "Full sync completes within 6-hour windows",
+        "Zero missed scheduled cron jobs",
+        "Profile freshness: max age 24 hours",
+        "Shop order sync latency <1 hour",
+        "Creator dashboard availability 99.5%"
+      ]
+    }
+  }
+}

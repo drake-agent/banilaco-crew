@@ -1,0 +1,225 @@
+{
+  "cross_review_date": "2026-03-30",
+  "total_raw_findings": 44,
+  "duplicates_merged": 5,
+  "false_positives_removed": 1,
+  "unified_findings_count": 40,
+  "severity_summary": {
+    "critical": 5,
+    "high": 12,
+    "medium": 17,
+    "low": 6
+  },
+  "critical_findings": [
+    {
+      "id": "UNI-001",
+      "source_ids": ["SEC-3", "SEC-4", "ARCH-001"],
+      "severity": "critical",
+      "title": "Service role key bypasses ALL RLS — any API route compromise = full DB exposure",
+      "location": "src/lib/supabase.ts:10-16 → all API routes",
+      "impact": "Complete data breach: 30K creators' GMV, commission, referral data exposed. RLS is security theater.",
+      "fix_summary": "Implement per-request auth checks. Use anon key for public, session tokens for authenticated. Audit all createServerClient() calls. Replace USING(true) with role-based RLS.",
+      "fix_dependency_order": 1,
+      "auto_fixable": false,
+      "estimated_effort": "8h"
+    },
+    {
+      "id": "SEC-1",
+      "source_ids": ["SEC-1"],
+      "severity": "critical",
+      "title": "/api/kpi PUT endpoint has ZERO authentication — exposes aggregated business metrics",
+      "location": "src/app/api/kpi/route.ts:45-97",
+      "impact": "Unauthenticated attacker retrieves total GMV, tier distribution, source breakdown. No audit trail.",
+      "fix_summary": "Add auth check + admin role validation at top of PUT handler.",
+      "fix_dependency_order": 2,
+      "auto_fixable": true,
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "ARCH-002",
+      "source_ids": ["ARCH-002"],
+      "severity": "critical",
+      "title": "Singleton ReferralEngine shares Supabase client across requests in serverless",
+      "location": "src/lib/referral/referral-engine.ts:28,331 + src/lib/ai/recommendation-engine.ts:48",
+      "impact": "Cross-request data leakage in warm containers. Auth state reuse between creators during peak hours.",
+      "fix_summary": "Remove singletons. Use factory function: getReferralEngine() per request. Same for RecommendationEngine.",
+      "fix_dependency_order": 3,
+      "auto_fixable": false,
+      "estimated_effort": "4h"
+    },
+    {
+      "id": "ARCH-003",
+      "source_ids": ["ARCH-003"],
+      "severity": "critical",
+      "title": "No transaction boundaries — partial failures corrupt referral, order, and content data",
+      "location": "src/lib/referral/referral-engine.ts:113-155, sync-orchestrator.ts:231-244",
+      "impact": "Referral INSERT succeeds but uses_count not incremented. GMV incremented but order not tracked. 5-10% inconsistent records by month 12.",
+      "fix_summary": "Wrap multi-step ops in PostgreSQL transactions via Supabase RPC. Create process_referral_signup_transaction().",
+      "fix_dependency_order": 4,
+      "auto_fixable": false,
+      "estimated_effort": "8h"
+    },
+    {
+      "id": "ARCH-004",
+      "source_ids": ["ARCH-004", "ARCH-007", "ARCH-008"],
+      "severity": "critical",
+      "title": "No idempotency + cron overlap + no order dedup = GMV doubling on every retry",
+      "location": "vercel.json crons, src/app/api/sync/route.ts, sync-orchestrator.ts:210-257",
+      "impact": "Cron retry or overlap fires syncShopOrders twice → same orders processed twice → monthly_gmv doubles. $1M+ incorrect at scale.",
+      "fix_summary": "Create order_tracking table with UNIQUE shop_order_id. Add cron_sync_state table. Stagger cron schedules. Check before processing.",
+      "fix_dependency_order": 5,
+      "auto_fixable": false,
+      "estimated_effort": "6h"
+    }
+  ],
+  "high_findings": [
+    {
+      "id": "STRUCT-001",
+      "source_ids": ["STRUCT-001"],
+      "severity": "high",
+      "title": "content_tracking missing updated_at column — sync-orchestrator upsert fails silently",
+      "location": "supabase/schema.sql:214-242 vs sync-orchestrator.ts:152-165",
+      "fix_summary": "Add updated_at column + auto-update trigger to content_tracking.",
+      "fix_dependency_order": 6,
+      "auto_fixable": true,
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "STRUCT-002",
+      "source_ids": ["STRUCT-002"],
+      "severity": "high",
+      "title": "referral_codes/referrals missing updated_at — RPC increment_referral_code_uses fails",
+      "location": "supabase/schema-v3.sql vs schema-v2.sql RPC",
+      "fix_summary": "Add updated_at column to both tables + auto-update trigger.",
+      "fix_dependency_order": 7,
+      "auto_fixable": true,
+      "estimated_effort": "1h"
+    },
+    {
+      "id": "BUG-1",
+      "source_ids": ["BUG-1"],
+      "severity": "high",
+      "title": "/api/shipping POST update_status — no field validation, accepts invalid status and arbitrary fields",
+      "location": "src/app/api/shipping/route.ts:108-136",
+      "fix_summary": "Validate status against enum. Add pickPatchFields() whitelist. Add auth check.",
+      "fix_dependency_order": 8,
+      "auto_fixable": true,
+      "estimated_effort": "2h"
+    },
+    {
+      "id": "SEC-2",
+      "source_ids": ["SEC-2"],
+      "severity": "high",
+      "title": "/api/join POST — public endpoint with no rate limiting, vulnerable to spam/DoS",
+      "location": "src/app/api/join/route.ts:16-64",
+      "fix_summary": "Implement per-IP rate limiting (5 req/hour). Add CAPTCHA or email verification.",
+      "fix_dependency_order": 9,
+      "auto_fixable": false,
+      "estimated_effort": "3h"
+    },
+    {
+      "id": "BUG-2",
+      "source_ids": ["BUG-2"],
+      "severity": "high",
+      "title": "/api/kpi PUT — weak null handling on latestKpi.data, masks DB errors",
+      "location": "src/app/api/kpi/route.ts:53, 81-91",
+      "fix_summary": "Add explicit error check for PGRST116. Handle null kpi properly. Add logging.",
+      "fix_dependency_order": 10,
+      "auto_fixable": true,
+      "estimated_effort": "0.5h"
+    },
+    {
+      "id": "UNI-002",
+      "source_ids": ["PERF-001", "ARCH-013"],
+      "severity": "high",
+      "title": "KPI PUT fetches ALL 30K creators into memory — no limit, no materialized view",
+      "location": "src/app/api/kpi/route.ts:50",
+      "fix_summary": "Move aggregation to DB (RPC or materialized view). Add .limit(). Cache results.",
+      "fix_dependency_order": 11,
+      "auto_fixable": false,
+      "estimated_effort": "4h"
+    },
+    {
+      "id": "PERF-002",
+      "source_ids": ["PERF-002"],
+      "severity": "high",
+      "title": "N+1 in referral status updates — 2,000 queries for 1,000 referrals",
+      "location": "src/lib/referral/referral-engine.ts:162-224",
+      "fix_summary": "Batch creator+content lookup with IN clause. Build Map for O(1) lookups.",
+      "fix_dependency_order": 12,
+      "auto_fixable": false,
+      "estimated_effort": "3h"
+    },
+    {
+      "id": "UNI-003",
+      "source_ids": ["STRUCT-003", "ARCH-005"],
+      "severity": "high",
+      "title": "3 schema files with no version tracking — migration chaos, no rollback path",
+      "location": "supabase/schema.sql, schema-v2.sql, schema-v3.sql",
+      "fix_summary": "Create migrations/ dir with numbered files. Add schema_migrations tracking table.",
+      "fix_dependency_order": 13,
+      "auto_fixable": false,
+      "estimated_effort": "4h"
+    },
+    {
+      "id": "ARCH-006",
+      "source_ids": ["ARCH-006"],
+      "severity": "high",
+      "title": "Adapter factory crashes on ANY missing env var — single point of failure for all sync",
+      "location": "src/lib/adapters/index.ts:25-81",
+      "fix_summary": "Lazy factory pattern with conditional initialization. Only create adapters when needed.",
+      "fix_dependency_order": 14,
+      "auto_fixable": false,
+      "estimated_effort": "3h"
+    },
+    {
+      "id": "CFG-001",
+      "source_ids": ["CFG-001"],
+      "severity": "high",
+      "title": "Cron timezone mismatch — UTC 3AM ≠ Korea 3AM, sync runs during peak hours",
+      "location": "vercel.json cron schedule vs code comments",
+      "fix_summary": "Fix schedule to '0 18 * * *' (UTC) = 3AM Korea. Add timezone comments.",
+      "fix_dependency_order": 15,
+      "auto_fixable": true,
+      "estimated_effort": "0.5h"
+    }
+  ],
+  "medium_findings": [
+    {"id": "BUG-3", "title": "Loose 'any' casting in /api/kpi PUT", "auto_fixable": false, "effort": "2h"},
+    {"id": "BUG-4", "title": "weeks_to_30k division by zero → NaN/Infinity", "auto_fixable": true, "effort": "1h"},
+    {"id": "SEC-5", "title": "TikTok Shop HMAC signing may be wrong", "auto_fixable": false, "effort": "2h"},
+    {"id": "BUG-5", "title": "Apify token in URL query param (credential exposure)", "auto_fixable": true, "effort": "1h"},
+    {"id": "BUG-6", "title": "Competitor discovery exposes already_in_db flag", "auto_fixable": true, "effort": "0.5h"},
+    {"id": "SEC-6", "title": "Email notification sender leaks API key in logs", "auto_fixable": true, "effort": "1h"},
+    {"id": "SEC-7", "title": "Recommendations PATCH auth scope unclear", "auto_fixable": false, "effort": "2h"},
+    {"id": "BUG-8", "title": "auto_update_tier trigger fires on every UPDATE", "auto_fixable": true, "effort": "1h"},
+    {"id": "UNI-004", "title": "/api/sync middleware skips auth, relies on CRON_SECRET only", "auto_fixable": false, "effort": "2h"},
+    {"id": "ARCH-009", "title": "Referral status update race conditions", "auto_fixable": false, "effort": "3h"},
+    {"id": "ARCH-011", "title": "RecommendationEngine sequential 500-creator fetch", "auto_fixable": false, "effort": "2h"},
+    {"id": "ARCH-012", "title": "No caching for AI tips — regenerated every request", "auto_fixable": false, "effort": "2.5h"},
+    {"id": "PERF-003", "title": "Apify crawler 5s polling delay", "auto_fixable": true, "effort": "1h"},
+    {"id": "CFG-002", "title": "Zod only used in /api/join, other endpoints unvalidated", "auto_fixable": false, "effort": "4h"},
+    {"id": "CFG-003", "title": ".env.example missing ANTHROPIC_MODEL_ID", "auto_fixable": true, "effort": "0.25h"},
+    {"id": "STRUCT-004", "title": "Schema ENUM vs TypeScript union no auto-sync", "auto_fixable": false, "effort": "2h"},
+    {"id": "PERF-004", "title": "syncShopOrders N+1 per-order creator lookup", "auto_fixable": false, "effort": "2.5h"}
+  ],
+  "low_findings": [
+    {"id": "BUG-7", "title": "DHL carrier regex too permissive"},
+    {"id": "CFG-004", "title": "isolatedModules barrel export issue"},
+    {"id": "CFG-005", "title": "Missing UI packages (CVA, @radix-ui)"},
+    {"id": "STRUCT-005", "title": "Reminder auto-detect content timing unclear"},
+    {"id": "ARCH-014", "title": "Adapter factory creates unused discovery adapter"},
+    {"id": "ARCH-015", "title": "syncContent filter discards not tracked"}
+  ],
+  "fix_priority_order": [
+    "SEC-1 → STRUCT-001 → STRUCT-002 (quick wins, auto-fixable)",
+    "ARCH-004 (idempotency + order dedup — prevents $1M+ data corruption)",
+    "ARCH-002 (singleton removal — prevents cross-request leakage)",
+    "UNI-001 (RLS architecture — largest effort but prevents full DB exposure)",
+    "ARCH-003 (transactions — prevents incremental data corruption)",
+    "BUG-1, BUG-2, CFG-001 (auto-fixable high findings)",
+    "UNI-002, PERF-002, ARCH-006 (performance + resilience)",
+    "Medium findings in dependency order",
+    "Low findings as backlog"
+  ]
+}
