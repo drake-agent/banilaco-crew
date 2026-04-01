@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { createServerClient } from '@/lib/supabase';
+import { clampPagination, pickFields } from '@/lib/api';
 
-// Validate pagination params (VULN-007)
-function clampPagination(page: number, limit: number): { page: number; limit: number } {
-  return {
-    page: Math.max(1, Math.min(isNaN(page) ? 1 : page, 10000)),
-    limit: Math.max(1, Math.min(isNaN(limit) ? 20 : limit, 100)),
-  };
-}
+const outreachPatchSchema = z.object({
+  status: z.enum(['discovered', 'contacted', 'responded', 'negotiating', 'onboarded', 'rejected', 'converted']).optional(),
+  notes: z.string().max(2000).optional(),
+  last_contacted_at: z.string().datetime().optional(),
+  assigned_to: z.string().uuid().optional(),
+}).strict();
 
 // Whitelist allowed update fields for PATCH
 const ALLOWED_PATCH_FIELDS = [
@@ -16,12 +17,7 @@ const ALLOWED_PATCH_FIELDS = [
 ] as const;
 
 function pickPatchFields(body: Record<string, any>): Record<string, any> {
-  const cleaned: Record<string, any> = {};
-  for (const key of ALLOWED_PATCH_FIELDS) {
-    if (body[key] !== undefined) {
-      cleaned[key] = body[key];
-    }
-  }
+  const cleaned = pickFields<any>(body, ALLOWED_PATCH_FIELDS);
   cleaned.updated_at = new Date().toISOString();
   return cleaned;
 }
@@ -86,6 +82,15 @@ export async function PATCH(request: NextRequest) {
 
   if (!id) {
     return NextResponse.json({ error: 'ID required' }, { status: 400 });
+  }
+
+  // Validate PATCH body
+  const validationResult = outreachPatchSchema.safeParse(rawUpdates);
+  if (!validationResult.success) {
+    return NextResponse.json(
+      { error: 'Validation failed', details: validationResult.error.errors },
+      { status: 400 }
+    );
   }
 
   // If converting to "converted", also create a creator record

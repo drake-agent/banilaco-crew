@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Send,
   MessageCircle,
@@ -30,274 +30,6 @@ import type {
   OutreachTierType,
 } from '@/types/database';
 
-// Mock outreach records with 15+ entries targeting competitor brands
-const mockOutreachRecords: OutreachRecord[] = [
-  {
-    id: '1',
-    tiktok_handle: '@skincare_guru_lily',
-    display_name: 'Lily Park',
-    outreach_tier: 'tier_a',
-    status: 'converted',
-    channel: 'tiktok_dm',
-    source_competitor: 'Medicube',
-    competitor_gmv: 450000,
-    follower_count: 85000,
-    dm_sent_at: '2026-03-20',
-    responded_at: '2026-03-21',
-    converted_at: '2026-03-23',
-    dm_template_version: 'Version A',
-    assigned_to: 'Sarah Chen',
-    notes: 'Excellent engagement, posted within 1 week',
-    created_at: '2026-03-20',
-    updated_at: '2026-03-23',
-  },
-  {
-    id: '2',
-    tiktok_handle: '@cosrx_love_min',
-    display_name: 'Min-jun Lee',
-    outreach_tier: 'tier_a',
-    status: 'sample_requested',
-    channel: 'tiktok_dm',
-    source_competitor: 'COSRX',
-    competitor_gmv: 520000,
-    follower_count: 120000,
-    dm_sent_at: '2026-03-22',
-    responded_at: '2026-03-23',
-    dm_template_version: 'Version B',
-    assigned_to: 'James Park',
-    notes: 'High engagement, ready for sample shipment',
-    created_at: '2026-03-22',
-    updated_at: '2026-03-24',
-  },
-  {
-    id: '3',
-    tiktok_handle: '@beauty_joseon_native',
-    display_name: 'Elena Rodriguez',
-    outreach_tier: 'tier_b',
-    status: 'responded',
-    channel: 'instagram_dm',
-    source_competitor: 'Beauty of Joseon',
-    competitor_gmv: 380000,
-    follower_count: 42000,
-    dm_sent_at: '2026-03-18',
-    responded_at: '2026-03-22',
-    dm_template_version: 'Version A',
-    assigned_to: 'Sarah Chen',
-    notes: 'Interested in collaboration, negotiating terms',
-    created_at: '2026-03-18',
-    updated_at: '2026-03-22',
-  },
-  {
-    id: '4',
-    tiktok_handle: '@anua_skincare_fan',
-    display_name: 'Sofia Nakamura',
-    outreach_tier: 'tier_a',
-    status: 'converted',
-    channel: 'tiktok_dm',
-    source_competitor: 'Anua',
-    competitor_gmv: 410000,
-    follower_count: 95000,
-    dm_sent_at: '2026-03-19',
-    responded_at: '2026-03-19',
-    converted_at: '2026-03-21',
-    dm_template_version: 'Version B',
-    assigned_to: 'James Park',
-    notes: 'Fastest conversion, already posted 2 videos',
-    created_at: '2026-03-19',
-    updated_at: '2026-03-21',
-  },
-  {
-    id: '5',
-    tiktok_handle: '@torriden_beauty_tips',
-    display_name: 'Marcus Thompson',
-    outreach_tier: 'tier_b',
-    status: 'dm_sent',
-    channel: 'tiktok_dm',
-    source_competitor: 'Torriden',
-    competitor_gmv: 290000,
-    follower_count: 58000,
-    dm_sent_at: '2026-03-25',
-    dm_template_version: 'Version A',
-    assigned_to: 'Sarah Chen',
-    notes: 'Awaiting response, follow up after 3 days',
-    created_at: '2026-03-25',
-    updated_at: '2026-03-25',
-  },
-  {
-    id: '6',
-    tiktok_handle: '@elf_makeup_addict',
-    display_name: 'Jessica Wong',
-    outreach_tier: 'tier_a',
-    status: 'responded',
-    channel: 'tiktok_dm',
-    source_competitor: 'e.l.f.',
-    competitor_gmv: 620000,
-    follower_count: 110000,
-    dm_sent_at: '2026-03-21',
-    responded_at: '2026-03-23',
-    dm_template_version: 'Version B',
-    assigned_to: 'James Park',
-    notes: 'Very interested, scheduling call to discuss details',
-    created_at: '2026-03-21',
-    updated_at: '2026-03-23',
-  },
-  {
-    id: '7',
-    tiktok_handle: '@medicube_official_fan',
-    display_name: 'Alex Kim',
-    outreach_tier: 'tier_b',
-    status: 'no_response',
-    channel: 'email',
-    source_competitor: 'Medicube',
-    competitor_gmv: 450000,
-    follower_count: 35000,
-    dm_sent_at: '2026-03-16',
-    dm_template_version: 'Version A',
-    assigned_to: 'Sarah Chen',
-    notes: 'No response after 5 days, might not be active',
-    created_at: '2026-03-16',
-    updated_at: '2026-03-24',
-  },
-  {
-    id: '8',
-    tiktok_handle: '@skincare_with_cosrx',
-    display_name: 'Priya Patel',
-    outreach_tier: 'tier_a',
-    status: 'converted',
-    channel: 'mcn_referral',
-    source_competitor: 'COSRX',
-    competitor_gmv: 520000,
-    follower_count: 135000,
-    dm_sent_at: '2026-03-17',
-    responded_at: '2026-03-18',
-    converted_at: '2026-03-20',
-    dm_template_version: 'Version B',
-    assigned_to: 'James Park',
-    notes: 'MCN referral, smooth conversion process',
-    created_at: '2026-03-17',
-    updated_at: '2026-03-20',
-  },
-  {
-    id: '9',
-    tiktok_handle: '@beauty_joseon_believer',
-    display_name: 'David Chen',
-    outreach_tier: 'tier_b',
-    status: 'declined',
-    channel: 'tiktok_dm',
-    source_competitor: 'Beauty of Joseon',
-    competitor_gmv: 380000,
-    follower_count: 41000,
-    dm_sent_at: '2026-03-14',
-    responded_at: '2026-03-15',
-    dm_template_version: 'Version A',
-    assigned_to: 'Sarah Chen',
-    notes: 'Focusing on other brands, politely declined',
-    created_at: '2026-03-14',
-    updated_at: '2026-03-15',
-  },
-  {
-    id: '10',
-    tiktok_handle: '@anua_glow_journey',
-    display_name: 'Isabella Martinez',
-    outreach_tier: 'tier_a',
-    status: 'sample_requested',
-    channel: 'instagram_dm',
-    source_competitor: 'Anua',
-    competitor_gmv: 410000,
-    follower_count: 102000,
-    dm_sent_at: '2026-03-23',
-    responded_at: '2026-03-24',
-    dm_template_version: 'Version A',
-    assigned_to: 'James Park',
-    notes: 'Requested full size product set',
-    created_at: '2026-03-23',
-    updated_at: '2026-03-24',
-  },
-  {
-    id: '11',
-    tiktok_handle: '@torriden_hydration_fan',
-    display_name: 'Yuki Tanaka',
-    outreach_tier: 'tier_b',
-    status: 'identified',
-    channel: undefined,
-    source_competitor: 'Torriden',
-    competitor_gmv: 290000,
-    follower_count: 54000,
-    dm_template_version: undefined,
-    assigned_to: 'Sarah Chen',
-    notes: 'Recently identified, schedule outreach',
-    created_at: '2026-03-26',
-    updated_at: '2026-03-26',
-  },
-  {
-    id: '12',
-    tiktok_handle: '@elf_budget_beauty',
-    display_name: 'Rachel Green',
-    outreach_tier: 'tier_b',
-    status: 'dm_sent',
-    channel: 'tiktok_dm',
-    source_competitor: 'e.l.f.',
-    competitor_gmv: 620000,
-    follower_count: 76000,
-    dm_sent_at: '2026-03-24',
-    dm_template_version: 'Version A',
-    assigned_to: 'James Park',
-    notes: 'Good engagement potential, awaiting response',
-    created_at: '2026-03-24',
-    updated_at: '2026-03-24',
-  },
-  {
-    id: '13',
-    tiktok_handle: '@medicube_skincare_review',
-    display_name: 'Tom Wilson',
-    outreach_tier: 'tier_a',
-    status: 'responded',
-    channel: 'tiktok_dm',
-    source_competitor: 'Medicube',
-    competitor_gmv: 450000,
-    follower_count: 88000,
-    dm_sent_at: '2026-03-22',
-    responded_at: '2026-03-24',
-    dm_template_version: 'Version B',
-    assigned_to: 'Sarah Chen',
-    notes: 'Very responsive, high conversion potential',
-    created_at: '2026-03-22',
-    updated_at: '2026-03-24',
-  },
-  {
-    id: '14',
-    tiktok_handle: '@cosrx_transformation',
-    display_name: 'Lisa Anderson',
-    outreach_tier: 'tier_b',
-    status: 'no_response',
-    channel: 'email',
-    source_competitor: 'COSRX',
-    competitor_gmv: 520000,
-    follower_count: 48000,
-    dm_sent_at: '2026-03-19',
-    dm_template_version: 'Version B',
-    assigned_to: 'James Park',
-    notes: 'Email sent, no response yet, may try TikTok DM',
-    created_at: '2026-03-19',
-    updated_at: '2026-03-25',
-  },
-  {
-    id: '15',
-    tiktok_handle: '@joseon_heritage_fan',
-    display_name: 'James Liu',
-    outreach_tier: 'tier_a',
-    status: 'identified',
-    channel: undefined,
-    source_competitor: 'Beauty of Joseon',
-    competitor_gmv: 380000,
-    follower_count: 98000,
-    dm_template_version: undefined,
-    assigned_to: 'Sarah Chen',
-    notes: 'High-potential creator, prioritize outreach',
-    created_at: '2026-03-26',
-    updated_at: '2026-03-26',
-  },
-];
 
 // Competitor breakdown
 const competitorBreakdown = [
@@ -397,12 +129,38 @@ const tierBadgeColor = (tier: OutreachTierType) => {
 };
 
 export default function OutreachPipelinePage() {
+  const [outreachRecords, setOutreachRecords] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<OutreachStatus | 'all'>('all');
   const [filterTier, setFilterTier] = useState<OutreachTierType | 'all'>('all');
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
 
+  const fetchOutreach = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.set('page', '1');
+      params.set('limit', '50');
+      const res = await fetch(`/api/outreach?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setOutreachRecords(json.data || []);
+      setTotalCount(json.pagination?.total || 0);
+    } catch (err) {
+      console.error('Outreach fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchOutreach();
+  }, [fetchOutreach]);
+
   // Calculate KPIs
+  const mockOutreachRecords = outreachRecords;
   const totalInPipeline = mockOutreachRecords.length;
   const dmsSentThisWeek = mockOutreachRecords.filter((r) => {
     if (!r.dm_sent_at) return false;
@@ -460,6 +218,17 @@ export default function OutreachPipelinePage() {
     midweekQuota: 15, // 30%
     midweekUsed: 7,
   };
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-screen">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Loading outreach data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600 mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -711,8 +480,8 @@ export default function OutreachPipelinePage() {
               </tr>
             </thead>
             <tbody>
-              {filteredRecords.map((record) => {
-                const colors = statusColors[record.status];
+              {filteredRecords.map((record: OutreachRecord) => {
+                const colors = statusColors[record.status as OutreachStatus];
                 const isExpanded = expandedRow === record.id;
 
                 return (

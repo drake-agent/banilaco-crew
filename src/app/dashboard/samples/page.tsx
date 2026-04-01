@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   BarChart,
   Bar,
@@ -29,340 +29,6 @@ import { SampleShipment, SampleSetType, SampleStatus, Creator } from '@/types/da
 // ============================================
 // Mock Data
 // ============================================
-
-const MOCK_CREATORS: Creator[] = [
-  {
-    id: '1',
-    tiktok_handle: '@glowingkim',
-    display_name: 'Kim Park',
-    email: 'kim@example.com',
-    follower_count: 125000,
-    avg_views: 45000,
-    engagement_rate: 4.2,
-    tier: 'gold',
-    source: 'dm_outreach',
-    status: 'active',
-    total_gmv: 12500,
-    monthly_gmv: 3200,
-    total_content_count: 18,
-    monthly_content_count: 5,
-    commission_rate: 5,
-    joined_at: '2025-08-15',
-    tags: ['skincare', 'routine'],
-    competitor_brands: ['brands_x', 'brands_y'],
-    created_at: '2025-08-15',
-    updated_at: '2026-03-27',
-  },
-  {
-    id: '2',
-    tiktok_handle: '@beautysarah',
-    display_name: 'Sarah Chen',
-    email: 'sarah@example.com',
-    follower_count: 87000,
-    avg_views: 32000,
-    engagement_rate: 3.8,
-    tier: 'silver',
-    source: 'open_collab',
-    status: 'active',
-    total_gmv: 8900,
-    monthly_gmv: 2100,
-    total_content_count: 12,
-    monthly_content_count: 3,
-    commission_rate: 4,
-    joined_at: '2025-10-01',
-    tags: ['makeup', 'tutorials'],
-    competitor_brands: ['brands_a'],
-    created_at: '2025-10-01',
-    updated_at: '2026-03-27',
-  },
-  {
-    id: '3',
-    tiktok_handle: '@skincarejess',
-    display_name: 'Jessica Ramos',
-    email: 'jess@example.com',
-    follower_count: 42000,
-    avg_views: 15000,
-    engagement_rate: 5.1,
-    tier: 'bronze',
-    source: 'referral',
-    status: 'active',
-    total_gmv: 4200,
-    monthly_gmv: 950,
-    total_content_count: 8,
-    monthly_content_count: 2,
-    commission_rate: 3,
-    joined_at: '2025-12-10',
-    tags: ['skincare', 'reviews'],
-    competitor_brands: [],
-    created_at: '2025-12-10',
-    updated_at: '2026-03-27',
-  },
-  {
-    id: '4',
-    tiktok_handle: '@makeupmaestro',
-    display_name: 'Marco Delgado',
-    email: 'marco@example.com',
-    follower_count: 156000,
-    avg_views: 58000,
-    engagement_rate: 3.9,
-    tier: 'diamond',
-    source: 'dm_outreach',
-    status: 'active',
-    total_gmv: 18900,
-    monthly_gmv: 5100,
-    total_content_count: 22,
-    monthly_content_count: 6,
-    commission_rate: 6,
-    joined_at: '2025-07-20',
-    tags: ['makeup', 'style'],
-    competitor_brands: ['brands_x', 'brands_z'],
-    created_at: '2025-07-20',
-    updated_at: '2026-03-27',
-  },
-  {
-    id: '5',
-    tiktok_handle: '@luminousalex',
-    display_name: 'Alex Thompson',
-    email: 'alex@example.com',
-    follower_count: 65000,
-    avg_views: 24000,
-    engagement_rate: 4.4,
-    tier: 'silver',
-    source: 'open_collab',
-    status: 'active',
-    total_gmv: 7150,
-    monthly_gmv: 1800,
-    total_content_count: 10,
-    monthly_content_count: 2,
-    commission_rate: 4,
-    joined_at: '2025-11-05',
-    tags: ['skincare', 'wellness'],
-    competitor_brands: ['brands_b'],
-    created_at: '2025-11-05',
-    updated_at: '2026-03-27',
-  },
-];
-
-const MOCK_SAMPLES: SampleShipment[] = [
-  {
-    id: 'SHIP001',
-    creator_id: '1',
-    creator: MOCK_CREATORS[0],
-    set_type: 'hero',
-    status: 'content_posted',
-    tracking_number: 'TRK001234567890',
-    carrier: 'FedEx',
-    shipped_at: '2026-03-10',
-    delivered_at: '2026-03-15',
-    content_posted_at: '2026-03-18',
-    content_url: 'https://tiktok.com/@glowingkim/video/123456789',
-    content_gmv: 2450,
-    sku_list: ['SKU-001', 'SKU-002', 'SKU-003'],
-    estimated_cost: 185,
-    shipping_cost: 25,
-    notes: 'Excellent engagement on first post',
-    created_at: '2026-03-09',
-    updated_at: '2026-03-18',
-  },
-  {
-    id: 'SHIP002',
-    creator_id: '2',
-    creator: MOCK_CREATORS[1],
-    set_type: 'premium',
-    status: 'reminder_2',
-    tracking_number: 'TRK002345678901',
-    carrier: 'DHL',
-    shipped_at: '2026-03-12',
-    delivered_at: '2026-03-17',
-    reminder_1_sent_at: '2026-03-22',
-    reminder_2_sent_at: '2026-03-27',
-    content_gmv: 0,
-    sku_list: ['SKU-004', 'SKU-005'],
-    estimated_cost: 145,
-    shipping_cost: 20,
-    notes: 'No response yet, sent 2nd reminder',
-    created_at: '2026-03-11',
-    updated_at: '2026-03-27',
-  },
-  {
-    id: 'SHIP003',
-    creator_id: '3',
-    creator: MOCK_CREATORS[2],
-    set_type: 'mini',
-    status: 'delivered',
-    tracking_number: 'TRK003456789012',
-    carrier: 'UPS',
-    shipped_at: '2026-03-14',
-    delivered_at: '2026-03-19',
-    content_gmv: 0,
-    sku_list: ['SKU-006'],
-    estimated_cost: 95,
-    shipping_cost: 15,
-    notes: 'Awaiting content',
-    created_at: '2026-03-13',
-    updated_at: '2026-03-19',
-  },
-  {
-    id: 'SHIP004',
-    creator_id: '4',
-    creator: MOCK_CREATORS[3],
-    set_type: 'hero',
-    status: 'content_posted',
-    tracking_number: 'TRK004567890123',
-    carrier: 'FedEx',
-    shipped_at: '2026-03-08',
-    delivered_at: '2026-03-13',
-    content_posted_at: '2026-03-16',
-    content_url: 'https://tiktok.com/@makeupmaestro/video/987654321',
-    content_gmv: 5890,
-    sku_list: ['SKU-001', 'SKU-002', 'SKU-003', 'SKU-007'],
-    estimated_cost: 220,
-    shipping_cost: 30,
-    notes: 'Top performer - 5.8K GMV',
-    created_at: '2026-03-07',
-    updated_at: '2026-03-16',
-  },
-  {
-    id: 'SHIP005',
-    creator_id: '5',
-    creator: MOCK_CREATORS[4],
-    set_type: 'premium',
-    status: 'reminder_1',
-    tracking_number: 'TRK005678901234',
-    carrier: 'DHL',
-    shipped_at: '2026-03-16',
-    delivered_at: '2026-03-21',
-    reminder_1_sent_at: '2026-03-26',
-    content_gmv: 0,
-    sku_list: ['SKU-008', 'SKU-009'],
-    estimated_cost: 155,
-    shipping_cost: 22,
-    notes: 'First reminder sent',
-    created_at: '2026-03-15',
-    updated_at: '2026-03-26',
-  },
-  {
-    id: 'SHIP006',
-    creator_id: '1',
-    creator: MOCK_CREATORS[0],
-    set_type: 'premium',
-    status: 'shipped',
-    tracking_number: 'TRK006789012345',
-    carrier: 'UPS',
-    shipped_at: '2026-03-25',
-    content_gmv: 0,
-    sku_list: ['SKU-010', 'SKU-011'],
-    estimated_cost: 165,
-    shipping_cost: 23,
-    notes: 'In transit',
-    created_at: '2026-03-24',
-    updated_at: '2026-03-25',
-  },
-  {
-    id: 'SHIP007',
-    creator_id: '2',
-    creator: MOCK_CREATORS[1],
-    set_type: 'hero',
-    status: 'approved',
-    content_gmv: 0,
-    sku_list: ['SKU-001', 'SKU-002', 'SKU-003', 'SKU-012'],
-    estimated_cost: 200,
-    shipping_cost: 28,
-    notes: 'Ready to ship',
-    created_at: '2026-03-26',
-    updated_at: '2026-03-26',
-  },
-  {
-    id: 'SHIP008',
-    creator_id: '3',
-    creator: MOCK_CREATORS[2],
-    set_type: 'mini',
-    status: 'requested',
-    content_gmv: 0,
-    sku_list: ['SKU-013'],
-    estimated_cost: 85,
-    shipping_cost: 12,
-    notes: 'Pending approval',
-    created_at: '2026-03-26',
-    updated_at: '2026-03-26',
-  },
-  {
-    id: 'SHIP009',
-    creator_id: '4',
-    creator: MOCK_CREATORS[3],
-    set_type: 'premium',
-    status: 'content_posted',
-    tracking_number: 'TRK009901234567',
-    carrier: 'FedEx',
-    shipped_at: '2026-03-05',
-    delivered_at: '2026-03-10',
-    content_posted_at: '2026-03-13',
-    content_url: 'https://tiktok.com/@makeupmaestro/video/456789123',
-    content_gmv: 3200,
-    sku_list: ['SKU-014', 'SKU-015'],
-    estimated_cost: 145,
-    shipping_cost: 20,
-    notes: 'Strong performance',
-    created_at: '2026-03-04',
-    updated_at: '2026-03-13',
-  },
-  {
-    id: 'SHIP010',
-    creator_id: '5',
-    creator: MOCK_CREATORS[4],
-    set_type: 'mini',
-    status: 'no_response',
-    tracking_number: 'TRK010012345678',
-    carrier: 'UPS',
-    shipped_at: '2026-03-02',
-    delivered_at: '2026-03-07',
-    reminder_1_sent_at: '2026-03-12',
-    reminder_2_sent_at: '2026-03-17',
-    content_gmv: 0,
-    sku_list: ['SKU-016'],
-    estimated_cost: 75,
-    shipping_cost: 10,
-    notes: 'No engagement',
-    created_at: '2026-03-01',
-    updated_at: '2026-03-17',
-  },
-  {
-    id: 'SHIP011',
-    creator_id: '1',
-    creator: MOCK_CREATORS[0],
-    set_type: 'hero',
-    status: 'delivered',
-    tracking_number: 'TRK011123456789',
-    carrier: 'DHL',
-    shipped_at: '2026-03-20',
-    delivered_at: '2026-03-24',
-    content_gmv: 0,
-    sku_list: ['SKU-017', 'SKU-018'],
-    estimated_cost: 195,
-    shipping_cost: 26,
-    notes: 'Recently delivered',
-    created_at: '2026-03-19',
-    updated_at: '2026-03-24',
-  },
-  {
-    id: 'SHIP012',
-    creator_id: '2',
-    creator: MOCK_CREATORS[1],
-    set_type: 'mini',
-    status: 'delivered',
-    tracking_number: 'TRK012234567890',
-    carrier: 'FedEx',
-    shipped_at: '2026-03-22',
-    delivered_at: '2026-03-26',
-    content_gmv: 0,
-    sku_list: ['SKU-019'],
-    estimated_cost: 88,
-    shipping_cost: 14,
-    notes: 'Awaiting content',
-    created_at: '2026-03-21',
-    updated_at: '2026-03-26',
-  },
-];
 
 // ============================================
 // Status Configuration
@@ -569,10 +235,11 @@ const PipelineIndicator: React.FC<PipelineIndicatorProps> = ({ status }) => {
 interface NewShipmentFormProps {
   isOpen: boolean;
   onClose: () => void;
-  creators: Creator[];
 }
 
-const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose, creators }) => {
+const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) => {
+  const [creators, setCreators] = useState<Creator[]>([]);
+  const [creatorsLoading, setCreatorsLoading] = useState(false);
   const [formData, setFormData] = useState({
     creator_id: '',
     set_type: 'hero' as SampleSetType,
@@ -581,6 +248,24 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose, crea
     shipping_cost: '',
     notes: '',
   });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    async function fetchCreators() {
+      setCreatorsLoading(true);
+      try {
+        const res = await fetch('/api/creators');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        setCreators(json.data || []);
+      } catch (err) {
+        console.error('Creators fetch error:', err);
+      } finally {
+        setCreatorsLoading(false);
+      }
+    }
+    fetchCreators();
+  }, [isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -719,10 +404,41 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose, crea
 // ============================================
 
 export default function SampleShipmentsPage() {
-  const [samples, setSamples] = useState<SampleShipment[]>(MOCK_SAMPLES);
+  const [samples, setSamples] = useState<SampleShipment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [totalCount, setTotalCount] = useState(0);
   const [showNewForm, setShowNewForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<SampleStatus | 'all'>('all');
   const [setTypeFilter, setSetTypeFilter] = useState<SampleSetType | 'all'>('all');
+
+  const fetchSamples = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (statusFilter && statusFilter !== 'all') params.set('status', statusFilter);
+      if (setTypeFilter && setTypeFilter !== 'all') params.set('set_type', setTypeFilter);
+      params.set('page', '1');
+      params.set('limit', '50');
+
+      const res = await fetch(`/api/samples?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setSamples(json.data || []);
+      setTotalCount(json.pagination?.total || 0);
+    } catch (err) {
+      console.error('Samples fetch error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter, setTypeFilter]);
+
+  useEffect(() => {
+    fetchSamples();
+  }, [fetchSamples]);
+
+  if (loading) {
+    return <div className="p-6"><div className="animate-pulse space-y-3">{Array.from({length:5}).map((_,i) => <div key={i} className="h-12 bg-gray-200 rounded" />)}</div></div>;
+  }
 
   const filteredSamples = samples.filter((s) => {
     const statusMatch = statusFilter === 'all' || s.status === statusFilter;
@@ -1107,7 +823,6 @@ export default function SampleShipmentsPage() {
       <NewShipmentForm
         isOpen={showNewForm}
         onClose={() => setShowNewForm(false)}
-        creators={MOCK_CREATORS}
       />
     </div>
   );

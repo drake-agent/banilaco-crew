@@ -1,9 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
 import { ReminderEngine } from '@/lib/reminders/reminder-engine';
-import { CompositeNotificationSender, ConsoleNotificationSender, EmailNotificationSender } from '@/lib/reminders/notification-sender';
+import {
+  CompositeNotificationSender,
+  ConsoleNotificationSender,
+  EmailNotificationSender,
+} from '@/lib/reminders/notification-sender';
 import { renderTemplate } from '@/lib/reminders/templates';
 import { SampleShipment, Creator } from '@/types/database';
+
+interface SendManualRequest {
+  action: 'send_manual';
+  shipment_id: string;
+  template: string;
+}
 
 // Verify cron secret for scheduled tasks
 function verifyCronSecret(request: NextRequest): boolean {
@@ -146,7 +156,7 @@ async function handleProcessReminders() {
 /**
  * Send manual reminder
  */
-async function handleSendManual(body: any) {
+async function handleSendManual(body: SendManualRequest) {
   const { shipment_id, template } = body;
 
   if (!shipment_id || !template) {

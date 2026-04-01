@@ -5,7 +5,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdapters } from '@/lib/adapters';
+import { SampleShippingSync } from '@/lib/sync/sample-shipping-sync';
 import { timingSafeEqual } from 'crypto';
+
+// Cron schedule operates in UTC. Vercel Cron always fires in UTC.
+// KST = UTC + 9 hours
+const CRON_SCHEDULE = {
+  FULL_SYNC_UTC: 18,        // KST 03:00 (새벽 3시)
+  SHOP_ORDERS_UTC: [3, 9, 15, 21], // KST 12:00, 18:00, 00:00, 06:00
+  COMPETITOR_DISCOVERY_UTC: 0,       // KST 09:00
+  COMPETITOR_DISCOVERY_DAYS: [1, 4], // Monday, Thursday
+} as const;
 
 // Timing-safe string comparison (VULN-004)
 function safeCompare(a: string, b: string): boolean {
@@ -26,6 +36,19 @@ function isAuthorized(req: NextRequest): boolean {
   if (serviceKey && safeCompare(authHeader || '', `Bearer ${serviceKey}`)) return true;
 
   return false;
+}
+
+// Timeout wrapper for long-running cron operations
+async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`[Cron Timeout] ${label} exceeded ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timeoutId!);
+  }
 }
 
 // POST /api/sync
@@ -55,6 +78,15 @@ export async function POST(req: NextRequest) {
           await orchestrator.runCompetitorDiscovery(options?.brands)
         );
 
+      case 'shipping_track': {
+        const { shippingAdapter } = createAdapters({ includeShipping: true });
+        if (!shippingAdapter) {
+          return NextResponse.json({ error: 'No shipping tracker configured' }, { status: 400 });
+        }
+        const shippingSync = new SampleShippingSync(shippingAdapter);
+        return NextResponse.json(await shippingSync.run());
+      }
+
       case 'metrics_compute':
         return NextResponse.json(
           await orchestrator.computeMetrics(options?.creatorIds)
@@ -69,10 +101,12 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Sync API Error]', error);
+    const message =
+      error instanceof Error ? error.message : 'Sync failed';
     return NextResponse.json(
-      { error: error.message || 'Sync failed' },
+      { error: message },
       { status: 500 }
     );
   }
@@ -84,7 +118,7 @@ export async function GET(req: NextRequest) {
   // Vercel Cron은 CRON_SECRET 헤더로 인증
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = req.headers.get('authorization');
-  const isCron = cronSecret && authHeader === `Bearer ${cronSecret}`;
+  const isCron = cronSecret && authHeader && safeCompare(authHeader, `Bearer ${cronSecret}`);
 
   if (!isCron) {
     // 인증 없으면 상태 정보만 반환
@@ -113,23 +147,78 @@ export async function GET(req: NextRequest) {
   const { orchestrator } = createAdapters();
 
   try {
-    if (hour === 18) {
+    if (
+      hour === CRON_SCHEDULE.FULL_SYNC_UTC
+    ) {
       // UTC 18:00 = KST 새벽 3AM — 풀 싱크 (프로필 + 콘텐츠 + 메트릭)
-      const results = await orchestrator.runFullSync();
-      return NextResponse.json({ cron: 'full_sync', results });
-    } else if ([3, 9, 15, 21].includes(hour)) {
+      const results = await withTimeout(
+        orchestrator.runFullSync(),
+        55000,
+        'full_sync'
+      );
+      return NextResponse.json({
+        cron: 'full_sync',
+        results,
+      });
+    } else if (
+      (CRON_SCHEDULE.SHOP_ORDERS_UTC as readonly number[]).includes(hour)
+    ) {
       // 6시간마다 (UTC 03/09/15/21 = KST 12PM/6PM/12AM/6AM) — Shop 주문 동기화
-      const result = await orchestrator.syncShopOrders();
-      return NextResponse.json({ cron: 'shop_orders', result });
-    } else if (hour === 0 && (day === 1 || day === 4)) {
+      const result = await withTimeout(
+        orchestrator.syncShopOrders(),
+        55000,
+        'shop_orders'
+      );
+      return NextResponse.json({
+        cron: 'shop_orders',
+        result,
+      });
+    } else if (hour % 2 === 0) {
+      // 짝수 시간마다 — 샘플 배송 추적 동기화
+      const { shippingAdapter } = createAdapters({
+        includeShipping: true,
+      });
+      if (shippingAdapter) {
+        const shippingSync = new SampleShippingSync(
+          shippingAdapter
+        );
+        const result = await withTimeout(
+          shippingSync.run(),
+          55000,
+          'shipping_track'
+        );
+        return NextResponse.json({
+          cron: 'shipping_track',
+          result,
+        });
+      }
+      return NextResponse.json({
+        cron: 'shipping_track',
+        skipped: 'No adapter configured',
+      });
+    } else if (
+      hour === CRON_SCHEDULE.COMPETITOR_DISCOVERY_UTC &&
+      (CRON_SCHEDULE.COMPETITOR_DISCOVERY_DAYS as readonly number[]).includes(
+        day
+      )
+    ) {
       // UTC 00:00 월/목 = KST 9AM 월/목 — 경쟁사 디스커버리
-      const result = await orchestrator.runCompetitorDiscovery();
+      const result = await withTimeout(orchestrator.runCompetitorDiscovery(), 55000, 'competitor_discovery');
       return NextResponse.json({ cron: 'competitor_discovery', result });
     } else {
-      return NextResponse.json({ cron: 'no_job_scheduled', hour, day });
+      return NextResponse.json({
+        cron: 'no_job_scheduled',
+        hour,
+        day,
+      });
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[Cron Sync Error]', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const message =
+      error instanceof Error ? error.message : 'Cron sync failed';
+    return NextResponse.json(
+      { error: message },
+      { status: 500 }
+    );
   }
 }

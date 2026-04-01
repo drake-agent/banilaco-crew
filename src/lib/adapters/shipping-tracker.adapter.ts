@@ -85,6 +85,34 @@ export interface IShippingTrackerAdapter {
 }
 
 // ------------------------------------
+// AfterShip API Response Types
+// ------------------------------------
+
+interface AfterShipCheckpoint {
+  tag?: string;
+  message?: string;
+  location?: string;
+  checkpoint_time?: string;
+}
+
+interface AfterShipTracking {
+  tracking_number?: string;
+  slug?: string;
+  tag?: string;
+  checkpoints?: AfterShipCheckpoint[];
+  shipment_pickup_date?: string;
+  expected_delivery?: string;
+  signed_by?: string;
+  last_updated_at?: string;
+}
+
+interface AfterShipTrackingResponse {
+  data?: {
+    tracking?: AfterShipTracking;
+  };
+}
+
+// ------------------------------------
 // AfterShip 연동 구현
 // ------------------------------------
 
@@ -102,7 +130,11 @@ export class AfterShipTrackingAdapter implements IShippingTrackerAdapter {
     this.baseUrl = config.baseUrl || 'https://api.aftership.com/v4';
   }
 
-  private async request<T>(method: string, path: string, body?: any): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: Record<string, unknown>
+  ): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -121,11 +153,16 @@ export class AfterShipTrackingAdapter implements IShippingTrackerAdapter {
     return json.data as T;
   }
 
-  async track(tracking_number: string, carrier?: CarrierCode): Promise<TrackingResult | null> {
-    const slug = carrier ? this.carrierToSlug(carrier) : this.detectSlug(tracking_number);
+  async track(
+    tracking_number: string,
+    carrier?: CarrierCode
+  ): Promise<TrackingResult | null> {
+    const slug = carrier
+      ? this.carrierToSlug(carrier)
+      : this.detectSlug(tracking_number);
 
     try {
-      const data = await this.request<{ tracking: any }>(
+      const data = await this.request<{ tracking: AfterShipTracking }>(
         'GET',
         `/trackings/${slug}/${tracking_number}`
       );
@@ -133,11 +170,15 @@ export class AfterShipTrackingAdapter implements IShippingTrackerAdapter {
     } catch {
       // 추적 정보가 없으면 먼저 등록 시도
       try {
-        await this.request('POST', '/trackings', {
-          tracking: { tracking_number, slug },
-        });
+        await this.request<Record<string, unknown>>(
+          'POST',
+          '/trackings',
+          {
+            tracking: { tracking_number, slug },
+          }
+        );
         // 등록 후 재조회
-        const data = await this.request<{ tracking: any }>(
+        const data = await this.request<{ tracking: AfterShipTracking }>(
           'GET',
           `/trackings/${slug}/${tracking_number}`
         );
@@ -190,9 +231,11 @@ export class AfterShipTrackingAdapter implements IShippingTrackerAdapter {
   // Mappers
   // ------------------------------------
 
-  private mapTracking(raw: any): TrackingResult {
-    const checkpoints: TrackingCheckpoint[] = (raw.checkpoints || []).map((cp: any) => ({
-      status: this.mapStatus(cp.tag),
+  private mapTracking(raw: AfterShipTracking): TrackingResult {
+    const checkpoints: TrackingCheckpoint[] = (
+      raw.checkpoints || []
+    ).map((cp: AfterShipCheckpoint) => ({
+      status: this.mapStatus(cp.tag || ''),
       message: cp.message || '',
       location: cp.location || undefined,
       timestamp: cp.checkpoint_time || new Date().toISOString(),
@@ -211,7 +254,7 @@ export class AfterShipTrackingAdapter implements IShippingTrackerAdapter {
     );
 
     return {
-      tracking_number: raw.tracking_number,
+      tracking_number: raw.tracking_number || '',
       carrier: this.slugToCarrier(raw.slug),
       current_status: this.mapStatus(raw.tag),
       estimated_delivery: raw.expected_delivery || undefined,
@@ -222,7 +265,8 @@ export class AfterShipTrackingAdapter implements IShippingTrackerAdapter {
     };
   }
 
-  private mapStatus(tag: string): ShipmentTrackingStatus {
+  private mapStatus(tag: string | undefined): ShipmentTrackingStatus {
+    if (!tag) return 'unknown';
     const map: Record<string, ShipmentTrackingStatus> = {
       InfoReceived: 'info_received',
       InTransit: 'in_transit',
@@ -248,7 +292,7 @@ export class AfterShipTrackingAdapter implements IShippingTrackerAdapter {
     return map[carrier];
   }
 
-  private slugToCarrier(slug: string): CarrierCode {
+  private slugToCarrier(slug: string | undefined): CarrierCode {
     if (slug?.includes('usps')) return 'usps';
     if (slug?.includes('ups')) return 'ups';
     if (slug?.includes('fedex')) return 'fedex';
@@ -277,7 +321,10 @@ export class SelfHostedShippingAdapter implements IShippingTrackerAdapter {
     this.config = config;
   }
 
-  private async request<T>(path: string, body?: any): Promise<T> {
+  private async request<T>(
+    path: string,
+    body?: Record<string, unknown>
+  ): Promise<T> {
     const res = await fetch(`${this.config.baseUrl}${path}`, {
       method: body ? 'POST' : 'GET',
       headers: {

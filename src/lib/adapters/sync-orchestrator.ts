@@ -105,9 +105,9 @@ export class DataSyncOrchestrator {
           processed++;
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       failed = handles.length;
-      errorLog.push({ handle: 'batch', error: err.message });
+      errorLog.push({ handle: 'batch', error: err instanceof Error ? err.message : String(err) });
     }
 
     return this.result('profile_refresh', processed, failed, start, {
@@ -288,29 +288,31 @@ export class DataSyncOrchestrator {
           const creatorId = creatorMap.get(order.creator_tiktok_id);
 
           if (creatorId && order.order_status === 'settled') {
-            // Record the order FIRST to ensure idempotency
-            await supabase.from('order_tracking').insert({
+            // Upsert order to prevent duplicate inserts
+            const { error: upsertError } = await supabase.from('order_tracking').upsert({
               shop_order_id: order.order_id,
               creator_id: creatorId,
               order_status: order.order_status,
               gmv_amount: order.gmv,
-            });
+            }, { onConflict: 'shop_order_id' });
 
-            // Then increment GMV
-            await supabase.rpc('increment_creator_gmv', {
-              p_creator_id: creatorId,
-              p_gmv_amount: order.gmv,
-            });
+            if (!upsertError) {
+              // Then increment GMV
+              await supabase.rpc('increment_creator_gmv', {
+                p_creator_id: creatorId,
+                p_gmv_amount: order.gmv,
+              });
 
-            newOrders++;
+              newOrders++;
+            }
           } else if (creatorId) {
             // Track non-settled orders too for visibility
-            await supabase.from('order_tracking').insert({
+            await supabase.from('order_tracking').upsert({
               shop_order_id: order.order_id,
               creator_id: creatorId,
               order_status: order.order_status,
               gmv_amount: order.gmv,
-            });
+            }, { onConflict: 'shop_order_id' });
           }
         }
 
@@ -329,7 +331,7 @@ export class DataSyncOrchestrator {
         })
         .eq('sync_type', 'shop_orders');
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       // Mark failed
       await supabase
         .from('cron_sync_state')
@@ -426,7 +428,8 @@ export class DataSyncOrchestrator {
         .select('*')
         .eq('creator_id', creator.id)
         .gte('posted_at', thirtyDaysAgo.toISOString())
-        .order('posted_at', { ascending: false });
+        .order('posted_at', { ascending: false })
+        .limit(100);
 
       if (!videos?.length) continue;
 

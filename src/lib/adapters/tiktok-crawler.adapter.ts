@@ -21,14 +21,46 @@ import type {
 } from './types';
 
 // ------------------------------------
-// Strategy A: Apify 연동
+// Apify API response types
 // ------------------------------------
+
+interface ApifyProfileRaw {
+  id?: string;
+  userId?: string;
+  uniqueId?: string;
+  name?: string;
+  nickname?: string;
+  displayName?: string;
+  signature?: string;
+  bio?: string;
+  avatarLarger?: string;
+  avatarThumb?: string;
+  fans?: number;
+  following?: number;
+  followingCount?: number;
+  heart?: number;
+  heartCount?: number;
+  video?: number;
+  videoCount?: number;
+  verified?: boolean;
+}
+
+interface ApifyVideoRaw {
+  id?: string;
+  desc?: string;
+  createTime?: number;
+  playCount?: number;
+  collectCount?: number;
+  commentCount?: number;
+  shareCount?: number;
+  hashtags?: Array<{ title?: string; name?: string }> | string[];
+}
 
 interface ApifyConfig {
   apiToken: string;
-  profileActorId?: string;  // 기본: 'clockworks/tiktok-profile-scraper'
-  videoActorId?: string;    // 기본: 'clockworks/tiktok-scraper'
-  hashtagActorId?: string;  // 기본: 'clockworks/tiktok-hashtag-scraper'
+  profileActorId?: string; // 기본: 'clockworks/tiktok-profile-scraper'
+  videoActorId?: string; // 기본: 'clockworks/tiktok-scraper'
+  hashtagActorId?: string; // 기본: 'clockworks/tiktok-hashtag-scraper'
   baseUrl?: string;
 }
 
@@ -45,7 +77,10 @@ export class ApifyTikTokCrawlerAdapter implements ITikTokCrawlerAdapter {
   // Private: Apify Actor 실행 헬퍼
   // ------------------------------------
 
-  private async runActor<T>(actorId: string, input: Record<string, any>): Promise<T[]> {
+  private async runActor<T>(
+    actorId: string,
+    input: Record<string, unknown>
+  ): Promise<T[]> {
     const url = `${this.baseUrl}/acts/${actorId}/runs`;
 
     const res = await fetch(url, {
@@ -171,27 +206,32 @@ export class ApifyTikTokCrawlerAdapter implements ITikTokCrawlerAdapter {
   }): Promise<CrawledVideo[]> {
     const actorId = this.config.hashtagActorId || 'clockworks/tiktok-hashtag-scraper';
 
-    const results = await this.runActor<any>(actorId, {
+    const results = await this.runActor<ApifyVideoRaw>(actorId, {
       hashtags: [params.hashtag],
       resultsPerPage: params.count || 50,
     });
 
-    return results.map((r) => this.mapVideo(r, r.authorMeta?.name || ''));
+    return results.map((r) =>
+      this.mapVideo(
+        r,
+        (r as { authorMeta?: { name?: string } }).authorMeta?.name || ''
+      )
+    );
   }
 
   // ------------------------------------
   // Mappers: Apify raw → 표준 타입
   // ------------------------------------
 
-  private mapProfile(raw: any): CrawledProfile {
+  private mapProfile(raw: ApifyProfileRaw): CrawledProfile {
     return {
       tiktok_id: raw.id || raw.userId || '',
       tiktok_handle: raw.uniqueId || raw.name || '',
       display_name: raw.nickname || raw.displayName || '',
       bio: raw.signature || raw.bio || '',
       avatar_url: raw.avatarLarger || raw.avatarThumb || '',
-      follower_count: raw.fans || raw.followerCount || 0,
-      following_count: raw.following || raw.followingCount || 0,
+      follower_count: raw.fans || 0,
+      following_count: raw.following || 0,
       like_count: raw.heart || raw.heartCount || 0,
       video_count: raw.video || raw.videoCount || 0,
       verified: raw.verified || false,
@@ -199,26 +239,32 @@ export class ApifyTikTokCrawlerAdapter implements ITikTokCrawlerAdapter {
     };
   }
 
-  private mapVideo(raw: any, fallback_handle: string): CrawledVideo {
+  private mapVideo(raw: ApifyVideoRaw, fallback_handle: string): CrawledVideo {
+    const hashtags = (
+      (raw.hashtags || []) as Array<
+        string | { title?: string; name?: string }
+      >
+    ).map((h) =>
+      typeof h === 'string' ? h : h.title || h.name || ''
+    );
+
     return {
-      video_id: raw.id || raw.videoId || '',
-      tiktok_handle: raw.authorMeta?.name || raw.author?.uniqueId || fallback_handle,
-      description: raw.text || raw.desc || '',
-      hashtags: (raw.hashtags || raw.challenges || []).map(
-        (h: any) => (typeof h === 'string' ? h : h.title || h.name || '')
-      ),
-      music_title: raw.musicMeta?.musicName || raw.music?.title || undefined,
-      view_count: raw.playCount || raw.stats?.playCount || 0,
-      like_count: raw.diggCount || raw.stats?.diggCount || 0,
-      comment_count: raw.commentCount || raw.stats?.commentCount || 0,
-      share_count: raw.shareCount || raw.stats?.shareCount || 0,
-      save_count: raw.collectCount || raw.stats?.collectCount || 0,
-      duration_seconds: raw.videoMeta?.duration || raw.video?.duration || 0,
-      cover_url: raw.videoMeta?.coverUrl || raw.video?.cover || undefined,
-      video_url: raw.videoUrl || raw.video?.playAddr || undefined,
+      video_id: raw.id || '',
+      tiktok_handle: fallback_handle,
+      description: raw.desc || '',
+      hashtags,
+      music_title: undefined,
+      view_count: raw.playCount || 0,
+      like_count: 0,
+      comment_count: raw.commentCount || 0,
+      share_count: raw.shareCount || 0,
+      save_count: raw.collectCount || 0,
+      duration_seconds: 0,
+      cover_url: undefined,
+      video_url: undefined,
       posted_at: raw.createTime
         ? new Date(raw.createTime * 1000).toISOString()
-        : raw.createTimeISO || new Date().toISOString(),
+        : new Date().toISOString(),
       crawled_at: new Date().toISOString(),
     };
   }
@@ -240,7 +286,10 @@ export class SelfHostedCrawlerAdapter implements ITikTokCrawlerAdapter {
     this.config = config;
   }
 
-  private async request<T>(path: string, body?: any): Promise<T> {
+  private async request<T>(
+    path: string,
+    body?: Record<string, unknown>
+  ): Promise<T> {
     const res = await fetch(`${this.config.baseUrl}${path}`, {
       method: body ? 'POST' : 'GET',
       headers: {

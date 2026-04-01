@@ -1,49 +1,44 @@
 'use client';
 
+import { useState, useEffect } from 'react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
-const weeklyData = [
-  { week: 'W1', views: 12000, gmv: 320, commission: 96 },
-  { week: 'W2', views: 18500, gmv: 580, commission: 174 },
-  { week: 'W3', views: 31000, gmv: 1250, commission: 375 },
-  { week: 'W4', views: 28000, gmv: 980, commission: 294 },
-  { week: 'W5', views: 45000, gmv: 1850, commission: 555 },
-];
-
-const stats = [
-  {
-    label: 'Monthly GMV',
-    value: '$850',
-    change: '+42%',
-    icon: '💳',
-  },
-  {
-    label: 'Commission Earned',
-    value: '$298',
-    change: '+38%',
-    icon: '💰',
-  },
-  {
-    label: 'Total Views',
-    value: '134.5K',
-    change: '+25%',
-    icon: '👁️',
-  },
-  {
-    label: 'Content Posted',
-    value: '5',
-    change: '+67%',
-    icon: '🎬',
-  },
-  {
-    label: 'Avg CTR',
-    value: '3.1%',
-    change: '-18%',
-    icon: '🎯',
-  },
-];
 
 export default function MyPerformance() {
+  const [creatorData, setCreatorData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchCreatorData() {
+      try {
+        const res = await fetch('/api/creator');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        setCreatorData(json);
+      } catch (err) {
+        console.error('Creator data fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchCreatorData();
+  }, []);
+
+  // Derive mock variable names from creatorData so JSX doesn't need changes
+  const weeklyData = creatorData?.weeklyData || [];
+  const stats = creatorData?.stats || [];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-linear-to-br from-white to-gray-50">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Loading your performance data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600 mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full bg-linear-to-br from-white to-gray-50">
       {/* Header */}
@@ -62,7 +57,7 @@ export default function MyPerformance() {
         <div className="p-8 space-y-8">
           {/* Stat Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {stats.map((stat, idx) => (
+            {stats.map((stat: any, idx: number) => (
               <div
                 key={idx}
                 className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm hover:shadow-md transition-shadow"

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { clampPagination, pickFields } from '@/lib/api';
 
 // Sanitize search input to prevent PostgREST injection (VULN-002)
 function sanitizeSearch(input: string): string {
@@ -10,29 +11,11 @@ function sanitizeSearch(input: string): string {
     .slice(0, 100); // Max 100 chars
 }
 
-// Validate pagination params (VULN-007)
-function clampPagination(page: number, limit: number): { page: number; limit: number } {
-  return {
-    page: Math.max(1, Math.min(isNaN(page) ? 1 : page, 10000)),
-    limit: Math.max(1, Math.min(isNaN(limit) ? 20 : limit, 100)),
-  };
-}
-
 // Whitelist allowed fields for creator insert (VULN-008)
 const ALLOWED_CREATE_FIELDS = [
   'tiktok_handle', 'display_name', 'email', 'instagram_handle',
   'source', 'status', 'follower_count', 'competitor_brands', 'notes',
 ] as const;
-
-function pickAllowedFields(body: Record<string, any>): Record<string, any> {
-  const cleaned: Record<string, any> = {};
-  for (const key of ALLOWED_CREATE_FIELDS) {
-    if (body[key] !== undefined) {
-      cleaned[key] = body[key];
-    }
-  }
-  return cleaned;
-}
 
 export async function GET(request: NextRequest) {
   const supabase = createServerClient();
@@ -84,7 +67,7 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
 
   // Whitelist allowed fields (VULN-008)
-  const cleanedBody = pickAllowedFields(body);
+  const cleanedBody = pickFields<any>(body, ALLOWED_CREATE_FIELDS);
 
   if (!cleanedBody.tiktok_handle) {
     return NextResponse.json({ error: 'tiktok_handle is required' }, { status: 400 });

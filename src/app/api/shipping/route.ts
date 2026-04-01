@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { clampPagination } from '@/lib/api';
 
 // GET: 배송 현황 요약
 export async function GET(req: NextRequest) {

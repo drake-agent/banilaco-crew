@@ -2,6 +2,13 @@
 // Banilaco Crew - Database Types
 // ============================================
 
+export interface SKU {
+  sku_id?: string;
+  product_name?: string;
+  quantity?: number;
+  price?: number;
+}
+
 export type CreatorTier = 'bronze' | 'silver' | 'gold' | 'diamond';
 export type CreatorSource = 'open_collab' | 'dm_outreach' | 'mcn' | 'buyer_to_creator' | 'referral' | 'paid';
 export type CreatorStatus = 'pending' | 'active' | 'inactive' | 'churned';
@@ -57,7 +64,7 @@ export interface SampleShipment {
   content_posted_at?: string;
   content_url?: string;
   content_gmv: number;
-  sku_list: any[];
+  sku_list: SKU[];
   estimated_cost?: number;
   shipping_cost?: number;
   notes?: string;

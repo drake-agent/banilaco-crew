@@ -67,7 +67,7 @@ export class CompetitorDiscoveryAdapter implements ICompetitorDiscoveryAdapter {
       ...params.hashtags,
       ...(COMPETITOR_HASHTAG_MAP[params.brand] || []),
     ];
-    const uniqueHashtags = [...new Set(allHashtags)];
+    const uniqueHashtags = Array.from(new Set(allHashtags));
 
     const videoPromises = uniqueHashtags.map((tag) =>
       this.crawler.searchByHashtag({ hashtag: tag, count: targetCount })
@@ -168,7 +168,7 @@ export class CompetitorDiscoveryAdapter implements ICompetitorDiscoveryAdapter {
       count: 50,
     });
 
-    const uniqueHandles = [...new Set(videos.map((v) => v.tiktok_handle))];
+    const uniqueHandles = Array.from(new Set(videos.map((v) => v.tiktok_handle)));
     const profiles = await this.crawler.fetchProfiles(uniqueHandles);
 
     const minFollowers = params.min_followers || this.minFollowers;

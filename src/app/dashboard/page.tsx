@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart,
   Bar,
@@ -28,78 +28,11 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import type { WeeklyKPI } from '@/types/database';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import { useApi, LoadingSkeleton, ErrorBanner } from '@/hooks/use-api';
 
-// Mock data for Week 3 of the 30K goal plan
-const mockStats = {
-  totalAffiliates: 8000,
-  weeklyNetIncrease: 2100,
-  monthlyGMV: 80000,
-  weeksTo30k: 5.3,
-};
-
-// Week-by-week progress data
-const progressData = [
-  { week: 'Week 1', affiliates: 3500, target: 3750 },
-  { week: 'Week 2', affiliates: 5900, target: 7500 },
-  { week: 'Week 3', affiliates: 8000, target: 11250 },
-  { week: 'Week 4', affiliates: null, target: 15000 },
-  { week: 'Week 5', affiliates: null, target: 18750 },
-  { week: 'Week 6', affiliates: null, target: 22500 },
-  { week: 'Week 7', affiliates: null, target: 26250 },
-  { week: 'Week 8', affiliates: null, target: 30000 },
-];
-
-// Channel mix data
-const channelMixData = [
-  { name: 'Open Collab', value: 3200, percentage: 40 },
-  { name: 'DM Outreach', value: 2400, percentage: 30 },
-  { name: 'MCN', value: 1600, percentage: 20 },
-  { name: 'Buyer→Creator', value: 800, percentage: 10 },
-];
-
-// Tier distribution
-const tierDistribution = [
-  { tier: 'Bronze', count: 4800, percentage: 60 },
-  { tier: 'Silver', count: 2400, percentage: 30 },
-  { tier: 'Gold', count: 640, percentage: 8 },
-  { tier: 'Diamond', count: 160, percentage: 2 },
-];
-
-// Recent activity
-const recentActivity = [
-  {
-    id: 1,
-    type: 'creator_added',
-    description: 'New creator added: @fashionista_luna',
-    timestamp: '2 hours ago',
-  },
-  {
-    id: 2,
-    type: 'outreach_sent',
-    description: 'Outreach batch sent to 145 creators',
-    timestamp: '4 hours ago',
-  },
-  {
-    id: 3,
-    type: 'sample_sent',
-    description: 'Product samples sent to 23 creators',
-    timestamp: '1 day ago',
-  },
-  {
-    id: 4,
-    type: 'goal_milestone',
-    description: 'Reached 7,500 affiliates (25% of 30K goal)',
-    timestamp: '2 days ago',
-  },
-  {
-    id: 5,
-    type: 'mcn_partnership',
-    description: 'New MCN partnership: CreatorHub Network',
-    timestamp: '3 days ago',
-  },
-];
 
 // Color palette
 const COLORS = {
@@ -149,6 +82,79 @@ function StatCard({
 }
 
 export default function DashboardPage() {
+  const { data: kpiData, loading: kpiLoading, error: kpiError, refetch } = useApi<any>('kpi');
+
+  // Derive stats from API response
+  const latestWeek = kpiData?.data?.[kpiData.data.length - 1];
+  const mockStats = {
+    totalAffiliates: latestWeek?.cumulative_affiliates || 0,
+    weeklyNetIncrease: latestWeek?.weekly_net_increase || 0,
+    monthlyGMV: latestWeek?.monthly_gmv || 0,
+    weeksTo30k: latestWeek?.weeks_to_30k || 0,
+  };
+
+  // Progress data from all weeks
+  const progressData = (kpiData?.data || []).map(
+    (w: WeeklyKPI, idx: number) => ({
+      week: `Week ${w.week_number || idx + 1}`,
+      affiliates: w.cumulative_affiliates,
+      target: 3750 * (idx + 1),
+    })
+  );
+  // Pad to 8 weeks
+  while (progressData.length < 8) {
+    progressData.push({
+      week: `Week ${progressData.length + 1}`,
+      affiliates: null,
+      target: 3750 * (progressData.length + 1),
+    });
+  }
+
+  // Channel mix from latest week
+  const channelMixData = latestWeek ? [
+    { name: 'Open Collab', value: latestWeek.open_collab_new || 0, percentage: 0 },
+    { name: 'DM Outreach', value: latestWeek.dm_outreach_new || 0, percentage: 0 },
+    { name: 'MCN', value: latestWeek.mcn_new || 0, percentage: 0 },
+    { name: 'Buyer→Creator', value: latestWeek.buyer_to_creator_new || 0, percentage: 0 },
+  ].map((ch, _, arr) => {
+    const total = arr.reduce((s, c) => s + c.value, 0);
+    return { ...ch, percentage: total > 0 ? Math.round((ch.value / total) * 100) : 0 };
+  }) : [];
+
+  // Tier distribution - needs separate query, use summary from KPI for now
+  const tierDistribution = kpiData?.summary ? [
+    { tier: 'Bronze', count: kpiData.summary.tierBreakdown?.bronze || 0, percentage: 0 },
+    { tier: 'Silver', count: kpiData.summary.tierBreakdown?.silver || 0, percentage: 0 },
+    { tier: 'Gold', count: kpiData.summary.tierBreakdown?.gold || 0, percentage: 0 },
+    { tier: 'Diamond', count: kpiData.summary.tierBreakdown?.diamond || 0, percentage: 0 },
+  ] : [
+    { tier: 'Bronze', count: 0, percentage: 60 },
+    { tier: 'Silver', count: 0, percentage: 30 },
+    { tier: 'Gold', count: 0, percentage: 8 },
+    { tier: 'Diamond', count: 0, percentage: 2 },
+  ];
+
+  // Recent activity - static for now (would need an activity log table)
+  const recentActivity: { id: number; type: string; description: string; timestamp: string }[] = [];
+
+  if (kpiLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <LoadingSkeleton rows={8} />
+      </div>
+    );
+  }
+
+  if (kpiError) {
+    return (
+      <div className="p-6 space-y-6">
+        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+        <ErrorBanner message={kpiError} onRetry={refetch} />
+      </div>
+    );
+  }
+
   const progressPercent = (mockStats.totalAffiliates / 30000) * 100;
 
   return (
@@ -211,7 +217,7 @@ export default function DashboardPage() {
 
         {/* Week Markers */}
         <div className="grid grid-cols-8 gap-1 text-center text-xs">
-          {progressData.map((week, idx) => (
+          {progressData.map((week: any, idx: number) => (
             <div key={idx} className="space-y-2">
               <div
                 className={cn(

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -29,236 +29,109 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
+import type { WeeklyKPI } from '@/types/database';
 
-// ============================================
-// Mock KPI Data - 5 Weeks of Progress
-// ============================================
+// Helper function to generate derived data from API response
+function generateChartData(data: WeeklyKPI[]) {
+  if (!data.length) return { cumulativeChartData: [], weeklyNetIncreaseData: [], gmvTrendData: [], contentProductionData: [], channelMixData: [], secondaryKPIs: [] };
 
-const weeklyKPIData = [
-  {
-    week: 1,
-    week_start: '2026-03-02',
-    week_end: '2026-03-08',
-    cumulative_affiliates: 3500,
-    weekly_new_affiliates: 3500,
-    weekly_churned: 0,
-    weekly_net_increase: 3500,
-    monthly_active_creators: 2100,
-    weekly_content_count: 450,
-    monthly_gmv: 28000,
-    weekly_gmv: 28000,
-    open_collab_new: 1400,
-    dm_outreach_new: 700,
-    mcn_new: 700,
-    buyer_to_creator_new: 350,
-    referral_new: 350,
-    dm_sent: 850,
-    dm_response_rate: 32.5,
-    sample_shipped: 120,
-    sample_post_rate: 58.3,
-    gmv_max_daily_budget: 1200,
-    gmv_max_total_gmv: 28000,
-    gmv_max_roas: 4.2,
-  },
-  {
-    week: 2,
-    week_start: '2026-03-09',
-    week_end: '2026-03-15',
-    cumulative_affiliates: 5900,
-    weekly_new_affiliates: 2500,
-    weekly_churned: 100,
-    weekly_net_increase: 2400,
-    monthly_active_creators: 3800,
-    weekly_content_count: 620,
-    monthly_gmv: 54200,
-    weekly_gmv: 26200,
-    open_collab_new: 1000,
-    dm_outreach_new: 700,
-    mcn_new: 500,
-    buyer_to_creator_new: 150,
-    referral_new: 50,
-    dm_sent: 1200,
-    dm_response_rate: 35.2,
-    sample_shipped: 165,
-    sample_post_rate: 61.8,
-    gmv_max_daily_budget: 1450,
-    gmv_max_total_gmv: 54200,
-    gmv_max_roas: 4.5,
-  },
-  {
-    week: 3,
-    week_start: '2026-03-16',
-    week_end: '2026-03-22',
-    cumulative_affiliates: 8000,
-    weekly_new_affiliates: 2250,
-    weekly_churned: 150,
-    weekly_net_increase: 2100,
-    monthly_active_creators: 5200,
-    weekly_content_count: 780,
-    monthly_gmv: 78450,
-    weekly_gmv: 24250,
-    open_collab_new: 900,
-    dm_outreach_new: 680,
-    mcn_new: 450,
-    buyer_to_creator_new: 200,
-    referral_new: 70,
-    dm_sent: 1500,
-    dm_response_rate: 37.1,
-    sample_shipped: 195,
-    sample_post_rate: 63.5,
-    gmv_max_daily_budget: 1680,
-    gmv_max_total_gmv: 78450,
-    gmv_max_roas: 4.7,
-  },
-  {
-    week: 4,
-    week_start: '2026-03-23',
-    week_end: '2026-03-29',
-    cumulative_affiliates: 10200,
-    weekly_new_affiliates: 2350,
-    weekly_churned: 150,
-    weekly_net_increase: 2200,
-    monthly_active_creators: 6800,
-    weekly_content_count: 920,
-    monthly_gmv: 105680,
-    weekly_gmv: 27230,
-    open_collab_new: 940,
-    dm_outreach_new: 700,
-    mcn_new: 480,
-    buyer_to_creator_new: 220,
-    referral_new: 60,
-    dm_sent: 1650,
-    dm_response_rate: 38.2,
-    sample_shipped: 220,
-    sample_post_rate: 65.0,
-    gmv_max_daily_budget: 1890,
-    gmv_max_total_gmv: 105680,
-    gmv_max_roas: 4.8,
-  },
-  {
-    week: 5,
-    week_start: '2026-03-30',
-    week_end: '2026-04-05',
-    cumulative_affiliates: 12450,
-    weekly_new_affiliates: 2350,
-    weekly_churned: 100,
-    weekly_net_increase: 2250,
-    monthly_active_creators: 8200,
-    weekly_content_count: 1050,
-    monthly_gmv: 136420,
-    weekly_gmv: 30740,
-    open_collab_new: 950,
-    dm_outreach_new: 720,
-    mcn_new: 500,
-    buyer_to_creator_new: 240,
-    referral_new: 40,
-    dm_sent: 1800,
-    dm_response_rate: 39.3,
-    sample_shipped: 245,
-    sample_post_rate: 66.8,
-    gmv_max_daily_budget: 2150,
-    gmv_max_total_gmv: 136420,
-    gmv_max_roas: 4.9,
-  },
-];
+  const cumulativeChartData = data.map((w) => ({
+    week: `W${w.week_number}`,
+    actual: w.cumulative_affiliates,
+    target:
+      w.week_number === 1
+        ? 3750
+        : w.week_number === 2
+          ? 7500
+          : w.week_number === 3
+            ? 11250
+            : w.week_number === 4
+              ? 15000
+              : 18750,
+  }));
 
-const currentWeek = 5;
-const latestData = weeklyKPIData[currentWeek - 1];
+  const weeklyNetIncreaseData = data.map((w) => ({
+    week: `W${w.week_number}`,
+    'Open Collab': w.open_collab_new,
+    'DM Outreach': w.dm_outreach_new,
+    'MCN': w.mcn_new,
+    'Buyer→Creator': w.buyer_to_creator_new,
+    'Referral': w.referral_new,
+  }));
 
-// Chart data
-const cumulativeChartData = weeklyKPIData.map((w) => ({
-  week: `W${w.week}`,
-  actual: w.cumulative_affiliates,
-  target:
-    w.week === 1
-      ? 3750
-      : w.week === 2
-        ? 7500
-        : w.week === 3
-          ? 11250
-          : w.week === 4
-            ? 15000
-            : 18750,
-}));
+  const gmvTrendData = data.map((w) => ({
+    week: `W${w.week_number}`,
+    gmv: w.weekly_gmv,
+    cumulative: w.monthly_gmv,
+  }));
 
-const weeklyNetIncreaseData = weeklyKPIData.map((w) => ({
-  week: `W${w.week}`,
-  'Open Collab': w.open_collab_new,
-  'DM Outreach': w.dm_outreach_new,
-  'MCN': w.mcn_new,
-  'Buyer→Creator': w.buyer_to_creator_new,
-  'Referral': w.referral_new,
-}));
+  const contentProductionData = data.map((w) => ({
+    week: `W${w.week_number}`,
+    'Content Count': w.weekly_content_count,
+    'Active Creators': w.monthly_active_creators,
+  }));
 
-const gmvTrendData = weeklyKPIData.map((w) => ({
-  week: `W${w.week}`,
-  gmv: w.weekly_gmv,
-  cumulative: w.monthly_gmv,
-}));
+  const latestData = data[data.length - 1];
+  const channelMixData = [
+    {
+      name: 'Open Collab',
+      value: latestData.open_collab_new * 5,
+      percentage: 40,
+    },
+    {
+      name: 'DM Outreach',
+      value: latestData.dm_outreach_new * 5,
+      percentage: 30,
+    },
+    { name: 'MCN', value: latestData.mcn_new * 5, percentage: 20 },
+    {
+      name: 'Buyer→Creator',
+      value: latestData.buyer_to_creator_new * 5,
+      percentage: 10,
+    },
+  ];
 
-const contentProductionData = weeklyKPIData.map((w) => ({
-  week: `W${w.week}`,
-  'Content Count': w.weekly_content_count,
-  'Active Creators': w.monthly_active_creators,
-}));
+  const secondaryKPIs = [
+    {
+      label: 'DM Response Rate',
+      value: `${latestData.dm_response_rate.toFixed(1)}%`,
+      target: '40%',
+      status: 'approaching',
+    },
+    {
+      label: 'Sample Post Conversion Rate',
+      value: `${latestData.sample_post_rate.toFixed(1)}%`,
+      target: '70%',
+      status: 'approaching',
+    },
+    {
+      label: 'Creator Retention (3-month)',
+      value: '92.1%',
+      target: '90%',
+      status: 'exceeding',
+    },
+    {
+      label: 'Top Performer % (Gold+)',
+      value: '10.2%',
+      target: '8%',
+      status: 'exceeding',
+    },
+    {
+      label: 'GMV per Creator',
+      value: '$109.50',
+      target: '$100',
+      status: 'exceeding',
+    },
+    {
+      label: 'GMV Max ROAS',
+      value: `${latestData.gmv_max_roas.toFixed(1)}x`,
+      target: '4.0x',
+      status: 'exceeding',
+    },
+  ];
 
-const channelMixData = [
-  {
-    name: 'Open Collab',
-    value: latestData.open_collab_new * 5,
-    percentage: 40,
-  },
-  {
-    name: 'DM Outreach',
-    value: latestData.dm_outreach_new * 5,
-    percentage: 30,
-  },
-  { name: 'MCN', value: latestData.mcn_new * 5, percentage: 20 },
-  {
-    name: 'Buyer→Creator',
-    value: latestData.buyer_to_creator_new * 5,
-    percentage: 10,
-  },
-];
-
-const secondaryKPIs = [
-  {
-    label: 'DM Response Rate',
-    value: `${latestData.dm_response_rate.toFixed(1)}%`,
-    target: '40%',
-    status: 'approaching',
-  },
-  {
-    label: 'Sample Post Conversion Rate',
-    value: `${latestData.sample_post_rate.toFixed(1)}%`,
-    target: '70%',
-    status: 'approaching',
-  },
-  {
-    label: 'Creator Retention (3-month)',
-    value: '92.1%',
-    target: '90%',
-    status: 'exceeding',
-  },
-  {
-    label: 'Top Performer % (Gold+)',
-    value: '10.2%',
-    target: '8%',
-    status: 'exceeding',
-  },
-  {
-    label: 'GMV per Creator',
-    value: '$109.50',
-    target: '$100',
-    status: 'exceeding',
-  },
-  {
-    label: 'GMV Max ROAS',
-    value: `${latestData.gmv_max_roas.toFixed(1)}x`,
-    target: '4.0x',
-    status: 'exceeding',
-  },
-];
+  return { cumulativeChartData, weeklyNetIncreaseData, gmvTrendData, contentProductionData, channelMixData, secondaryKPIs };
+}
 
 // Colors
 const COLORS = {
@@ -333,7 +206,13 @@ function StatCard({
   );
 }
 
-function GoalTrackerHero() {
+function GoalTrackerHero({
+  latestData,
+  currentWeek,
+}: {
+  latestData: WeeklyKPI;
+  currentWeek: number;
+}) {
   const progressPercent =
     (latestData.cumulative_affiliates / 30000) * 100;
   const weeklyRate = latestData.weekly_net_increase;
@@ -446,6 +325,56 @@ function GoalTrackerHero() {
 }
 
 export default function KPIDashboardPage() {
+  const [weeklyKPIData, setWeeklyKPIData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchKPI() {
+      try {
+        const res = await fetch('/api/kpi');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        setWeeklyKPIData(json.data || []);
+      } catch (err) {
+        console.error('KPI fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchKPI();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse space-y-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-8 bg-gray-200 rounded" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!weeklyKPIData.length) {
+    return (
+      <div className="p-6">
+        <p className="text-gray-600">No KPI data available.</p>
+      </div>
+    );
+  }
+
+  const currentWeek = weeklyKPIData.length;
+  const latestData = weeklyKPIData[currentWeek - 1];
+  const {
+    cumulativeChartData,
+    weeklyNetIncreaseData,
+    gmvTrendData,
+    contentProductionData,
+    channelMixData,
+    secondaryKPIs,
+  } = generateChartData(weeklyKPIData);
+
   return (
     <div className="p-6 space-y-6">
       {/* Page Header */}
@@ -457,7 +386,7 @@ export default function KPIDashboardPage() {
       </div>
 
       {/* 30K Goal Tracker Hero */}
-      <GoalTrackerHero />
+      <GoalTrackerHero latestData={latestData} currentWeek={currentWeek} />
 
       {/* Primary KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
@@ -513,7 +442,7 @@ export default function KPIDashboardPage() {
                   backgroundColor: '#ffffff',
                   border: '1px solid #e5e7eb',
                 }}
-                formatter={(value) => `${(value / 1000).toFixed(1)}K`}
+                formatter={(value: any) => `${(Number(value) / 1000).toFixed(1)}K`}
               />
               <Legend />
               <Line
@@ -586,7 +515,7 @@ export default function KPIDashboardPage() {
                   backgroundColor: '#ffffff',
                   border: '1px solid #e5e7eb',
                 }}
-                formatter={(value) => `$${(value / 1000).toFixed(1)}K`}
+                formatter={(value: any) => `$${(Number(value) / 1000).toFixed(1)}K`}
               />
               <Legend />
               <Line
@@ -661,7 +590,7 @@ export default function KPIDashboardPage() {
                 ))}
               </Pie>
               <Tooltip
-                formatter={(value) => `${(value / 1000).toFixed(1)}K creators`}
+                formatter={(value: any) => `${(Number(value) / 1000).toFixed(1)}K creators`}
               />
             </PieChart>
           </ResponsiveContainer>

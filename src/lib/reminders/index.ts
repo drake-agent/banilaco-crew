@@ -7,8 +7,8 @@ export type { ShipmentWithCreator, ReminderResult } from './reminder-engine';
 
 export { renderTemplate } from './templates';
 
+export type { INotificationSender } from './notification-sender';
 export {
-  INotificationSender,
   ConsoleNotificationSender,
   EmailNotificationSender,
   CompositeNotificationSender,

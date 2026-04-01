@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Truck,
   Package,
@@ -19,6 +19,7 @@ import {
   RotateCcw,
   XCircle,
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import {
   BarChart,
   Bar,
@@ -68,94 +69,11 @@ interface ShipmentRow {
   content_posted: boolean;
 }
 
-// ============================================
-// Mock Data
-// ============================================
 
-const MOCK_SHIPMENTS: ShipmentRow[] = [
-  {
-    id: '1', creator_handle: '@glowwithsara', creator_name: 'Sara Kim',
-    set_type: 'hero', status: 'delivered', tracking_number: '9400111899223100001234',
-    carrier: 'usps', shipped_at: '2026-03-15', delivered_at: '2026-03-19',
-    days_in_transit: 4, last_location: 'Los Angeles, CA', last_checkpoint: 'Delivered to front door',
-    content_posted: true,
-  },
-  {
-    id: '2', creator_handle: '@beautybymia', creator_name: 'Mia Chen',
-    set_type: 'premium', status: 'delivered', tracking_number: '9400111899223100005678',
-    carrier: 'usps', shipped_at: '2026-03-14', delivered_at: '2026-03-18',
-    days_in_transit: 4, last_location: 'New York, NY', last_checkpoint: 'Delivered, left with individual',
-    content_posted: true,
-  },
-  {
-    id: '3', creator_handle: '@skincarejess', creator_name: 'Jessica Park',
-    set_type: 'hero', status: 'in_transit', tracking_number: '1Z999AA10123456784',
-    carrier: 'ups', shipped_at: '2026-03-24', days_in_transit: 3,
-    estimated_delivery: '2026-03-28', last_location: 'Memphis, TN',
-    last_checkpoint: 'In transit to destination', content_posted: false,
-  },
-  {
-    id: '4', creator_handle: '@kbeautylover', creator_name: 'Emily Watson',
-    set_type: 'mini', status: 'out_for_delivery', tracking_number: '9400111899223100009012',
-    carrier: 'usps', shipped_at: '2026-03-23', days_in_transit: 4,
-    estimated_delivery: '2026-03-27', last_location: 'Chicago, IL',
-    last_checkpoint: 'Out for delivery', content_posted: false,
-  },
-  {
-    id: '5', creator_handle: '@cleanbeautyali', creator_name: 'Ali Johnson',
-    set_type: 'hero', status: 'shipped', tracking_number: '785612345678',
-    carrier: 'fedex', shipped_at: '2026-03-26', days_in_transit: 1,
-    estimated_delivery: '2026-03-30', last_location: 'Ontario, CA',
-    last_checkpoint: 'Picked up', content_posted: false,
-  },
-  {
-    id: '6', creator_handle: '@tiktokmakeup', creator_name: 'Danielle Lee',
-    set_type: 'premium', status: 'failed_attempt', tracking_number: '9400111899223100003456',
-    carrier: 'usps', shipped_at: '2026-03-20', days_in_transit: 7,
-    last_location: 'Houston, TX', last_checkpoint: 'No authorized recipient available',
-    content_posted: false,
-  },
-  {
-    id: '7', creator_handle: '@skinwithluna', creator_name: 'Luna Nguyen',
-    set_type: 'hero', status: 'returned', tracking_number: '9400111899223100007890',
-    carrier: 'usps', shipped_at: '2026-03-10', days_in_transit: 14,
-    last_location: 'Return to sender', last_checkpoint: 'Returned — incorrect address',
-    content_posted: false,
-  },
-  {
-    id: '8', creator_handle: '@beautyhaul', creator_name: 'Chloe Martinez',
-    set_type: 'mini', status: 'requested', days_in_transit: 0,
-    content_posted: false,
-  },
-  {
-    id: '9', creator_handle: '@vibecheck', creator_name: 'Taylor Reed',
-    set_type: 'hero', status: 'approved', days_in_transit: 0,
-    content_posted: false,
-  },
-  {
-    id: '10', creator_handle: '@skincaregoals', creator_name: 'Rachel Wong',
-    set_type: 'premium', status: 'delivered', tracking_number: '9400111899223100002222',
-    carrier: 'usps', shipped_at: '2026-03-12', delivered_at: '2026-03-16',
-    days_in_transit: 4, last_location: 'San Francisco, CA', last_checkpoint: 'Delivered to mailbox',
-    content_posted: false,
-  },
-  {
-    id: '11', creator_handle: '@glossyboss', creator_name: 'Sophia Patel',
-    set_type: 'hero', status: 'in_transit', tracking_number: '1Z999AA10123456790',
-    carrier: 'ups', shipped_at: '2026-03-25', days_in_transit: 2,
-    estimated_delivery: '2026-03-29', last_location: 'Louisville, KY',
-    last_checkpoint: 'Departed facility', content_posted: false,
-  },
-  {
-    id: '12', creator_handle: '@dewydani', creator_name: 'Dani Flores',
-    set_type: 'premium', status: 'delivered', tracking_number: '9400111899223100004444',
-    carrier: 'usps', shipped_at: '2026-03-08', delivered_at: '2026-03-12',
-    days_in_transit: 4, last_location: 'Seattle, WA', last_checkpoint: 'Delivered',
-    content_posted: true,
-  },
-];
-
-const STATUS_CONFIG: Record<ShipmentStatus, { label: string; color: string; bg: string; icon: any }> = {
+const STATUS_CONFIG: Record<
+  ShipmentStatus,
+  { label: string; color: string; bg: string; icon: LucideIcon }
+> = {
   requested:        { label: 'Requested',        color: 'text-gray-500',   bg: 'bg-gray-100',    icon: Clock },
   approved:         { label: 'Approved',         color: 'text-blue-600',   bg: 'bg-blue-50',     icon: CheckCircle2 },
   shipped:          { label: 'Shipped',          color: 'text-indigo-600', bg: 'bg-indigo-50',   icon: Package },
@@ -179,53 +97,41 @@ const CARRIER_TRACK_URL: Record<CarrierCode, (tn: string) => string> = {
 };
 
 // ============================================
-// Analytics Helpers
-// ============================================
-
-function computeAnalytics(shipments: ShipmentRow[]) {
-  const total = shipments.length;
-  const delivered = shipments.filter((s) => s.status === 'delivered').length;
-  const inTransitGroup = shipments.filter((s) =>
-    ['shipped', 'in_transit', 'out_for_delivery'].includes(s.status)
-  ).length;
-  const failed = shipments.filter((s) =>
-    ['failed_attempt', 'returned', 'exception'].includes(s.status)
-  ).length;
-  const pending = shipments.filter((s) =>
-    ['requested', 'approved'].includes(s.status)
-  ).length;
-
-  const deliveredShipments = shipments.filter((s) => s.status === 'delivered');
-  const avgDays = deliveredShipments.length
-    ? deliveredShipments.reduce((s, r) => s + r.days_in_transit, 0) / deliveredShipments.length
-    : 0;
-
-  const shippedOrDelivered = shipments.filter((s) =>
-    !['requested', 'approved'].includes(s.status)
-  ).length;
-  const deliveryRate = shippedOrDelivered ? (delivered / shippedOrDelivered) * 100 : 0;
-
-  // 콘텐츠 전환율: 도착 → 콘텐츠 포스팅
-  const contentPosted = deliveredShipments.filter((s) => s.content_posted).length;
-  const contentRate = deliveredShipments.length
-    ? (contentPosted / deliveredShipments.length) * 100
-    : 0;
-
-  return { total, delivered, inTransitGroup, failed, pending, avgDays, deliveryRate, contentRate, contentPosted };
-}
-
-// ============================================
 // Component
 // ============================================
 
 export default function ShippingDashboardPage() {
+  const [shipments, setShipments] = useState<ShipmentRow[]>([]);
+  const [analytics, setAnalytics] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ShipmentStatus | 'all'>('all');
   const [carrierFilter, setCarrierFilter] = useState<CarrierCode | 'all'>('all');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
 
+  useEffect(() => {
+    async function fetchShipping() {
+      try {
+        const res = await fetch('/api/shipping');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        setShipments(json.shipments || []);
+        setAnalytics(json.analytics || null);
+      } catch (err) {
+        console.error('Shipping fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchShipping();
+  }, []);
+
+  if (loading) {
+    return <div className="p-6"><div className="animate-pulse space-y-3">{Array.from({length:5}).map((_,i) => <div key={i} className="h-12 bg-gray-200 rounded" />)}</div></div>;
+  }
+
   const filtered = useMemo(() => {
-    return MOCK_SHIPMENTS.filter((s) => {
+    return shipments.filter((s) => {
       if (statusFilter !== 'all' && s.status !== statusFilter) return false;
       if (carrierFilter !== 'all' && s.carrier !== carrierFilter) return false;
       if (searchQuery) {
@@ -238,9 +144,7 @@ export default function ShippingDashboardPage() {
       }
       return true;
     });
-  }, [searchQuery, statusFilter, carrierFilter]);
-
-  const analytics = computeAnalytics(MOCK_SHIPMENTS);
+  }, [searchQuery, statusFilter, carrierFilter, shipments]);
 
   // Chart data
   const statusPieData = [
@@ -251,7 +155,7 @@ export default function ShippingDashboardPage() {
   ].filter((d) => d.value > 0);
 
   const carrierData = (['usps', 'ups', 'fedex', 'dhl'] as CarrierCode[]).map((c) => {
-    const carrierShipments = MOCK_SHIPMENTS.filter((s) => s.carrier === c);
+    const carrierShipments = shipments.filter((s) => s.carrier === c);
     const del = carrierShipments.filter((s) => s.status === 'delivered');
     return {
       carrier: CARRIER_LABELS[c],
@@ -395,7 +299,7 @@ export default function ShippingDashboardPage() {
               ['delivered', 'Delivered'],
             ] as [ShipmentStatus, string][]
           ).map(([status, label], i) => {
-            const count = MOCK_SHIPMENTS.filter((s) => s.status === status).length;
+            const count = shipments.filter((s) => s.status === status).length;
             const conf = STATUS_CONFIG[status];
             return (
               <React.Fragment key={status}>
@@ -598,7 +502,7 @@ export default function ShippingDashboardPage() {
             Needs Attention ({analytics.failed})
           </h3>
           <div className="space-y-2">
-            {MOCK_SHIPMENTS.filter((s) =>
+            {shipments.filter((s) =>
               ['failed_attempt', 'returned', 'exception'].includes(s.status)
             ).map((s) => (
               <div key={s.id} className="flex items-center justify-between p-3 bg-red-50 rounded-lg">
@@ -624,7 +528,7 @@ export default function ShippingDashboardPage() {
             Delivered — Awaiting Content
           </h3>
           <div className="space-y-2">
-            {MOCK_SHIPMENTS.filter((s) => s.status === 'delivered' && !s.content_posted).map((s) => {
+            {shipments.filter((s) => s.status === 'delivered' && !s.content_posted).map((s) => {
               const daysSinceDelivery = s.delivered_at
                 ? Math.ceil((Date.now() - new Date(s.delivered_at).getTime()) / (1000 * 60 * 60 * 24))
                 : 0;

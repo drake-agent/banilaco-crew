@@ -1,300 +1,9 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { formatNumber, formatCurrency, tierColor, statusColor, sourceLabel } from '@/lib/utils';
 import type { Creator, CreatorTier, CreatorSource, CreatorStatus } from '@/types/database';
 
-// Mock data for creators
-const MOCK_CREATORS: Creator[] = [
-  {
-    id: 'creator_001',
-    tiktokHandle: '@glowupwithmin',
-    displayName: 'Min Ji Park',
-    email: 'minji@example.com',
-    instagram: '@minjibeauty_kr',
-    tier: 'Diamond',
-    source: 'Open Collab',
-    status: 'Active',
-    followers: 542000,
-    monthlyGMV: 18500,
-    monthlyContentCount: 12,
-    commissionRate: 8.5,
-    lastActive: new Date('2026-03-26'),
-    mcnName: null,
-    tags: ['K-beauty', 'Skincare', 'High-performer'],
-    notes: 'Top performer, consistent content quality',
-  },
-  {
-    id: 'creator_002',
-    tiktokHandle: '@skincaresofya',
-    displayName: 'Sofia Yoon',
-    email: 'sofia@example.com',
-    instagram: '@sofiabeauty',
-    tier: 'Gold',
-    source: 'DM',
-    status: 'Active',
-    followers: 328000,
-    monthlyGMV: 12300,
-    monthlyContentCount: 10,
-    commissionRate: 7.5,
-    lastActive: new Date('2026-03-27'),
-    mcnName: null,
-    tags: ['Skincare', 'Tutorials'],
-    notes: 'Consistent performer, good engagement rate',
-  },
-  {
-    id: 'creator_003',
-    tiktokHandle: '@beausangah',
-    displayName: 'Sangah Park',
-    email: 'sangah@example.com',
-    instagram: '@sangahbeaute',
-    tier: 'Diamond',
-    source: 'Referral',
-    status: 'Active',
-    followers: 765000,
-    monthlyGMV: 24100,
-    monthlyContentCount: 15,
-    commissionRate: 9,
-    lastActive: new Date('2026-03-25'),
-    mcnName: null,
-    tags: ['K-beauty', 'Makeup', 'Trends', 'High-performer'],
-    notes: 'Mega influencer, drives significant volume',
-  },
-  {
-    id: 'creator_004',
-    tiktokHandle: '@carefacebyls',
-    displayName: 'Lisa Chen',
-    email: 'lisa@example.com',
-    instagram: '@liscareface',
-    tier: 'Silver',
-    source: 'MCN',
-    status: 'Active',
-    followers: 156000,
-    monthlyGMV: 6800,
-    monthlyContentCount: 8,
-    commissionRate: 6.5,
-    lastActive: new Date('2026-03-27'),
-    mcnName: 'Beauty Network Asia',
-    tags: ['Skincare', 'Routine'],
-    notes: 'Reliable performer through MCN partnership',
-  },
-  {
-    id: 'creator_005',
-    tiktokHandle: '@joyfulbeauty',
-    displayName: 'Joy Kim',
-    email: 'joy@example.com',
-    instagram: '@joyfulkbeauty',
-    tier: 'Gold',
-    source: 'Buyer→Creator',
-    status: 'Active',
-    followers: 402000,
-    monthlyGMV: 14700,
-    monthlyContentCount: 11,
-    commissionRate: 7.5,
-    lastActive: new Date('2026-03-24'),
-    mcnName: null,
-    tags: ['K-beauty', 'Viral trends'],
-    notes: 'Former buyer, great product knowledge',
-  },
-  {
-    id: 'creator_006',
-    tiktokHandle: '@glowgoddess_kj',
-    displayName: 'Kyuri Jung',
-    email: 'kyuri@example.com',
-    instagram: '@kyuriglowgoddess',
-    tier: 'Silver',
-    source: 'Open Collab',
-    status: 'Active',
-    followers: 234000,
-    monthlyGMV: 8200,
-    monthlyContentCount: 9,
-    commissionRate: 6.5,
-    lastActive: new Date('2026-03-27'),
-    mcnName: null,
-    tags: ['Skincare', 'Affordable'],
-    notes: 'Growing creator, strong engagement',
-  },
-  {
-    id: 'creator_007',
-    tiktokHandle: '@beautymuse_ah',
-    displayName: 'Ah Ra Lee',
-    email: 'ahara@example.com',
-    instagram: '@ahraleemuse',
-    tier: 'Bronze',
-    source: 'DM',
-    status: 'Active',
-    followers: 87000,
-    monthlyGMV: 3100,
-    monthlyContentCount: 5,
-    commissionRate: 5.5,
-    lastActive: new Date('2026-03-26'),
-    mcnName: null,
-    tags: ['Skincare', 'Budget-friendly'],
-    notes: 'New creator, still building audience',
-  },
-  {
-    id: 'creator_008',
-    tiktokHandle: '@stylewithjin',
-    displayName: 'Jin Park',
-    email: 'jin@example.com',
-    instagram: '@jinstyle_kr',
-    tier: 'Gold',
-    source: 'Paid',
-    status: 'Active',
-    followers: 521000,
-    monthlyGMV: 16400,
-    monthlyContentCount: 13,
-    commissionRate: 7,
-    lastActive: new Date('2026-03-27'),
-    mcnName: null,
-    tags: ['K-beauty', 'Fashion', 'Lifestyle'],
-    notes: 'Multi-category influencer, excellent reach',
-  },
-  {
-    id: 'creator_009',
-    tiktokHandle: '@skintruth_mj',
-    displayName: 'Min Joo Kang',
-    email: 'minjoo@example.com',
-    instagram: '@minjootruth',
-    tier: 'Silver',
-    source: 'Referral',
-    status: 'Pending',
-    followers: 198000,
-    monthlyGMV: 0,
-    monthlyContentCount: 0,
-    commissionRate: 6.5,
-    lastActive: new Date('2026-03-20'),
-    mcnName: null,
-    tags: ['Skincare', 'Education'],
-    notes: 'Pending onboarding, high engagement potential',
-  },
-  {
-    id: 'creator_010',
-    tiktokHandle: '@luminouslipz',
-    displayName: 'Soo Ji Han',
-    email: 'soojiuhan@example.com',
-    instagram: '@sujibeauty',
-    tier: 'Bronze',
-    source: 'Open Collab',
-    status: 'Active',
-    followers: 112000,
-    monthlyGMV: 4200,
-    monthlyContentCount: 6,
-    commissionRate: 5.5,
-    lastActive: new Date('2026-03-25'),
-    mcnName: null,
-    tags: ['Makeup', 'Trends'],
-    notes: 'Emerging creator with viral potential',
-  },
-  {
-    id: 'creator_011',
-    tiktokHandle: '@essenceofbeauty',
-    displayName: 'Ye Lin Park',
-    email: 'yelin@example.com',
-    instagram: '@yelinessence',
-    tier: 'Silver',
-    source: 'MCN',
-    status: 'Active',
-    followers: 267000,
-    monthlyGMV: 9600,
-    monthlyContentCount: 10,
-    commissionRate: 6.5,
-    lastActive: new Date('2026-03-26'),
-    mcnName: 'K-Beauty Collective',
-    tags: ['K-beauty', 'Holistic'],
-    notes: 'MCN partnership performing well',
-  },
-  {
-    id: 'creator_012',
-    tiktokHandle: '@dewycomplexion',
-    displayName: 'Hae Won Jung',
-    email: 'haewon@example.com',
-    instagram: '@haewon_dewy',
-    tier: 'Bronze',
-    source: 'Buyer→Creator',
-    status: 'Inactive',
-    followers: 78000,
-    monthlyGMV: 0,
-    monthlyContentCount: 0,
-    commissionRate: 5.5,
-    lastActive: new Date('2026-01-15'),
-    mcnName: null,
-    tags: ['Skincare'],
-    notes: 'Inactive for 2+ months, needs reactivation',
-  },
-  {
-    id: 'creator_013',
-    tiktokHandle: '@glowtribe_kr',
-    displayName: 'Tae Young Moon',
-    email: 'taeyoung@example.com',
-    instagram: '@taeyoungglow',
-    tier: 'Gold',
-    source: 'Open Collab',
-    status: 'Active',
-    followers: 445000,
-    monthlyGMV: 15200,
-    monthlyContentCount: 12,
-    commissionRate: 7.5,
-    lastActive: new Date('2026-03-27'),
-    mcnName: null,
-    tags: ['K-beauty', 'Skincare', 'Community'],
-    notes: 'Strong community engagement, consistent growth',
-  },
-  {
-    id: 'creator_014',
-    tiktokHandle: '@luxelips_beauty',
-    displayName: 'Nari Choi',
-    email: 'nari@example.com',
-    instagram: '@nariluxe',
-    tier: 'Silver',
-    source: 'DM',
-    status: 'Churned',
-    followers: 156000,
-    monthlyGMV: 0,
-    commissionRate: 6.5,
-    monthlyContentCount: 0,
-    lastActive: new Date('2025-11-30'),
-    mcnName: null,
-    tags: ['Makeup', 'Premium'],
-    notes: 'Churned due to brand conflict',
-  },
-  {
-    id: 'creator_015',
-    tiktokHandle: '@purecomplexion',
-    displayName: 'Huni Lee',
-    email: 'huni@example.com',
-    instagram: '@hunipure',
-    tier: 'Bronze',
-    source: 'Referral',
-    status: 'Active',
-    followers: 95000,
-    monthlyGMV: 2800,
-    monthlyContentCount: 4,
-    commissionRate: 5.5,
-    lastActive: new Date('2026-03-24'),
-    mcnName: null,
-    tags: ['Skincare', 'Natural'],
-    notes: 'New creator, testing partnership',
-  },
-  {
-    id: 'creator_016',
-    tiktokHandle: '@radiantskincare',
-    displayName: 'Sun Mi Ahn',
-    email: 'sunmi@example.com',
-    instagram: '@sunmiradiant',
-    tier: 'Gold',
-    source: 'Paid',
-    status: 'Active',
-    followers: 378000,
-    monthlyGMV: 13900,
-    monthlyContentCount: 11,
-    commissionRate: 7.5,
-    lastActive: new Date('2026-03-27'),
-    mcnName: null,
-    tags: ['K-beauty', 'Skincare', 'Education'],
-    notes: 'Educational content driving conversions',
-  },
-];
 
 interface CreatorFilterState {
   search: string;
@@ -328,45 +37,64 @@ export default function CreatorsPage() {
     displayName: '',
     email: '',
     instagram: '',
-    source: 'Open Collab',
+    source: 'open_collab',
     mcnName: '',
     tags: '',
     notes: '',
   });
 
+  // API data state
+  const [creators, setCreators] = useState<Creator[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const itemsPerPage = 20;
 
-  // Filter creators
-  const filteredCreators = useMemo(() => {
-    return MOCK_CREATORS.filter((creator) => {
-      const searchLower = filters.search.toLowerCase();
-      const matchesSearch =
-        creator.tiktokHandle.toLowerCase().includes(searchLower) ||
-        creator.displayName.toLowerCase().includes(searchLower);
+  // Fetch creators from API
+  const fetchCreators = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      if (filters.search) params.set('search', filters.search);
+      if (filters.tier) params.set('tier', filters.tier);
+      if (filters.source) params.set('source', filters.source);
+      if (filters.status) params.set('status', filters.status);
+      params.set('page', String(currentPage));
+      params.set('limit', '20');
 
-      const matchesTier = !filters.tier || creator.tier === filters.tier;
-      const matchesSource = !filters.source || creator.source === filters.source;
-      const matchesStatus = !filters.status || creator.status === filters.status;
+      const res = await fetch(`/api/creators?${params.toString()}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const json = await res.json();
+      setCreators(json.data || []);
+      setTotalCount(json.pagination?.total || 0);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Unknown error';
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, currentPage]);
 
-      return matchesSearch && matchesTier && matchesSource && matchesStatus;
-    });
-  }, [filters]);
+  // Setup API fetch on mount and when filters/page change
+  useEffect(() => {
+    fetchCreators();
+  }, [fetchCreators]);
 
   // Pagination
-  const totalPages = Math.ceil(filteredCreators.length / itemsPerPage);
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedCreators = filteredCreators.slice(
-    startIndex,
-    startIndex + itemsPerPage
-  );
+  const totalPages = Math.ceil(totalCount / itemsPerPage);
+  const paginatedCreators = creators;
 
   // Summary stats
-  const activeCreators = MOCK_CREATORS.filter((c) => c.status === 'Active');
-  const totalGMV = MOCK_CREATORS.reduce((sum, c) => sum + c.monthlyGMV, 0);
+  const activeCreators = creators.filter((c) => c.status === 'active');
+  const totalGMV = creators.reduce((sum, c) => sum + c.monthly_gmv, 0);
   const averageGMVPerCreator =
     activeCreators.length > 0 ? totalGMV / activeCreators.length : 0;
-  const topPerformer = MOCK_CREATORS.reduce((max, creator) =>
-    creator.monthlyGMV > max.monthlyGMV ? creator : max
+  const topPerformer = creators.reduce((max, creator) =>
+    creator.monthly_gmv > max.monthly_gmv ? creator : max,
+    creators[0] || { monthly_gmv: 0, display_name: 'N/A' } as any
   );
 
   // Handle form submission
@@ -380,7 +108,7 @@ export default function CreatorsPage() {
       displayName: '',
       email: '',
       instagram: '',
-      source: 'Open Collab',
+      source: 'open_collab',
       mcnName: '',
       tags: '',
       notes: '',
@@ -392,8 +120,36 @@ export default function CreatorsPage() {
     value: string
   ) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
-    setCurrentPage(1); // Reset to first page when filtering
+    setCurrentPage(1);
   };
+
+  if (loading && creators.length === 0) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="p-6">
+            <div className="animate-pulse space-y-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="h-12 bg-gray-200 rounded" />
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 p-6">
+        <div className="mx-auto max-w-7xl">
+          <div className="rounded-lg bg-red-50 p-6 text-red-700">
+            Error loading creators: {error}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 p-6">
@@ -419,7 +175,7 @@ export default function CreatorsPage() {
           <div className="rounded-lg bg-white p-6 shadow-md">
             <p className="text-sm font-medium text-slate-600">Total Creators</p>
             <p className="mt-2 text-3xl font-bold text-slate-900">
-              {MOCK_CREATORS.length}
+              {totalCount}
             </p>
           </div>
           <div className="rounded-lg bg-white p-6 shadow-md">
@@ -441,9 +197,9 @@ export default function CreatorsPage() {
               Top Performer GMV
             </p>
             <p className="mt-2 text-3xl font-bold text-indigo-600">
-              {formatCurrency(topPerformer.monthlyGMV)}
+              {formatCurrency(topPerformer.monthly_gmv || 0)}
             </p>
-            <p className="text-xs text-slate-500">{topPerformer.displayName}</p>
+            <p className="text-xs text-slate-500">{topPerformer.display_name || 'N/A'}</p>
           </div>
         </div>
 
@@ -472,10 +228,10 @@ export default function CreatorsPage() {
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
               >
                 <option value="">All Tiers</option>
-                <option value="Bronze">Bronze</option>
-                <option value="Silver">Silver</option>
-                <option value="Gold">Gold</option>
-                <option value="Diamond">Diamond</option>
+                <option value="bronze">Bronze</option>
+                <option value="silver">Silver</option>
+                <option value="gold">Gold</option>
+                <option value="diamond">Diamond</option>
               </select>
             </div>
             <div>
@@ -488,12 +244,12 @@ export default function CreatorsPage() {
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
               >
                 <option value="">All Sources</option>
-                <option value="Open Collab">Open Collab</option>
-                <option value="DM">DM</option>
-                <option value="MCN">MCN</option>
-                <option value="Buyer→Creator">Buyer→Creator</option>
-                <option value="Referral">Referral</option>
-                <option value="Paid">Paid</option>
+                <option value="open_collab">Open Collab</option>
+                <option value="dm_outreach">DM</option>
+                <option value="mcn">MCN</option>
+                <option value="buyer_to_creator">Buyer→Creator</option>
+                <option value="referral">Referral</option>
+                <option value="paid">Paid</option>
               </select>
             </div>
             <div>
@@ -506,10 +262,10 @@ export default function CreatorsPage() {
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
               >
                 <option value="">All Statuses</option>
-                <option value="Active">Active</option>
-                <option value="Pending">Pending</option>
-                <option value="Inactive">Inactive</option>
-                <option value="Churned">Churned</option>
+                <option value="active">Active</option>
+                <option value="pending">Pending</option>
+                <option value="inactive">Inactive</option>
+                <option value="churned">Churned</option>
               </select>
             </div>
             <div>
@@ -517,7 +273,7 @@ export default function CreatorsPage() {
                 Results
               </label>
               <div className="mt-1 flex items-center justify-between rounded border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700">
-                {filteredCreators.length} found
+                {creators.length} found
               </div>
             </div>
           </div>
@@ -573,10 +329,10 @@ export default function CreatorsPage() {
                     }`}
                   >
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                      {creator.tiktokHandle}
+                      {creator.tiktok_handle}
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-700">
-                      {creator.displayName}
+                      {creator.display_name}
                     </td>
                     <td className="px-6 py-4">
                       <span
@@ -602,22 +358,24 @@ export default function CreatorsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right text-sm text-slate-700">
-                      {formatNumber(creator.followers)}
+                      {formatNumber(creator.follower_count)}
                     </td>
                     <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">
-                      {formatCurrency(creator.monthlyGMV)}
+                      {formatCurrency(creator.monthly_gmv)}
                     </td>
                     <td className="px-6 py-4 text-right text-sm text-slate-700">
-                      {creator.monthlyContentCount}
+                      {creator.monthly_content_count}
                     </td>
                     <td className="px-6 py-4 text-right text-sm text-slate-700">
-                      {creator.commissionRate}%
+                      {creator.commission_rate}%
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600">
-                      {creator.lastActive.toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                      })}
+                      {creator.last_active_at
+                        ? new Date(creator.last_active_at).toLocaleDateString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                          })
+                        : 'N/A'}
                     </td>
                     <td className="px-6 py-4 text-center">
                       <div className="flex items-center justify-center gap-2">
@@ -776,12 +534,12 @@ export default function CreatorsPage() {
                     }
                     className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
                   >
-                    <option value="Open Collab">Open Collab</option>
-                    <option value="DM">DM</option>
-                    <option value="MCN">MCN</option>
-                    <option value="Buyer→Creator">Buyer→Creator</option>
-                    <option value="Referral">Referral</option>
-                    <option value="Paid">Paid</option>
+                    <option value="open_collab">Open Collab</option>
+                    <option value="dm_outreach">DM</option>
+                    <option value="mcn">MCN</option>
+                    <option value="buyer_to_creator">Buyer→Creator</option>
+                    <option value="referral">Referral</option>
+                    <option value="paid">Paid</option>
                   </select>
                 </div>
                 <div>

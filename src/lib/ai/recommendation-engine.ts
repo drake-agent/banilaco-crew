@@ -2,8 +2,22 @@ import { createServerClient } from '@/lib/supabase';
 import { generateAITips } from './prompt-templates';
 import { Creator } from '@/types/database';
 
-export type RecommendationCategory = 'hook' | 'format' | 'posting_schedule' | 'cta' | 'timing';
+export type RecommendationCategory =
+  | 'hook'
+  | 'format'
+  | 'posting_schedule'
+  | 'cta'
+  | 'timing';
 export type RecommendationPriority = 'high' | 'medium' | 'low';
+
+interface ContentItem {
+  views?: number;
+  likes?: number;
+  comments?: number;
+  shares?: number;
+  posted_at?: string;
+  content_type?: string;
+}
 
 export interface Recommendation {
   id?: string;
@@ -114,7 +128,10 @@ export class RecommendationEngine {
   /**
    * Compute creator content metrics from their videos
    */
-  private computeMetrics(content: any[], creator: Creator): CreatorContentMetrics {
+  private computeMetrics(
+    content: ContentItem[],
+    creator: Creator
+  ): CreatorContentMetrics {
     if (!content || content.length === 0) {
       return {
         avgViews: 0,

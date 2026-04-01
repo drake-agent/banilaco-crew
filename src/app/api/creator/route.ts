@@ -18,6 +18,20 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
   }
 
+  // Verify ownership — check that authed user owns this creator
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user) {
+    const { data: account } = await supabase
+      .from('creator_accounts')
+      .select('creator_id')
+      .eq('auth_user_id', session.user.id)
+      .single();
+
+    if (account && account.creator_id !== creatorId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+  }
+
   // Fetch creator profile
   const { data: creator, error: creatorError } = await supabase
     .from('creators')

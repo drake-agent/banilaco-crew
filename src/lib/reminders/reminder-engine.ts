@@ -305,62 +305,86 @@ export class ReminderEngine {
         return detected;
       }
 
-      // For each shipment, check if there's content posted after delivery
+      // Collect all unique creator IDs for batch query
+      const creatorIds: string[] = [];
+      const shipmentMap = new Map<string, ShipmentWithCreator>();
+
       for (const shipment of shipments as ShipmentWithCreator[]) {
         const creator = shipment.creator as Creator;
         if (!creator) {
           console.warn(`Shipment ${shipment.id} has no creator, skipping content detection`);
           continue;
         }
+        creatorIds.push(creator.id);
+        shipmentMap.set(creator.id, shipment);
+      }
 
-        // Check if content_tracking has an entry for this creator after delivery
-        const { data: contentTracking, error: trackingError } = await this.supabase
-          .from('content_tracking')
-          .select('id, video_url, created_at')
-          .eq('creator_id', creator.id)
-          .gt('created_at', shipment.delivered_at || '')
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+      if (creatorIds.length === 0) {
+        return detected;
+      }
 
-        if (trackingError && trackingError.code !== 'PGRST116') {
-          // PGRST116 = no rows returned, which is expected
-          console.warn(`Error checking content_tracking for creator ${creator.id}:`, trackingError);
+      // Single batch query: fetch all content for these creators
+      const { data: allContentTracking, error: batchError } = await this.supabase
+        .from('content_tracking')
+        .select('id, creator_id, video_url, created_at')
+        .in('creator_id', creatorIds);
+
+      if (batchError) {
+        console.warn('Error fetching batch content_tracking:', batchError);
+        return detected;
+      }
+
+      // Build a Map of creator_id → latest content (newest created_at wins)
+      const contentMap = new Map<string, typeof allContentTracking[0]>();
+      if (allContentTracking) {
+        for (const content of allContentTracking) {
+          const existing = contentMap.get(content.creator_id);
+          if (!existing || new Date(content.created_at) > new Date(existing.created_at)) {
+            contentMap.set(content.creator_id, content);
+          }
+        }
+      }
+
+      // Process shipments against the pre-fetched content map
+      for (const shipment of shipments as ShipmentWithCreator[]) {
+        const creator = shipment.creator as Creator;
+        if (!creator) continue;
+
+        const contentTracking = contentMap.get(creator.id);
+        if (!contentTracking || !shipment.delivered_at || new Date(contentTracking.created_at) <= new Date(shipment.delivered_at)) {
           continue;
         }
 
-        if (contentTracking) {
-          // Content detected! Mark shipment as content_posted
-          const { error: updateError } = await this.supabase
-            .from('sample_shipments')
-            .update({
-              status: 'content_posted' as SampleStatus,
-              content_posted_at: contentTracking.created_at,
-              content_url: contentTracking.video_url,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', shipment.id);
+        // Content detected! Mark shipment as content_posted
+        const { error: updateError } = await this.supabase
+          .from('sample_shipments')
+          .update({
+            status: 'content_posted' as SampleStatus,
+            content_posted_at: contentTracking.created_at,
+            content_url: contentTracking.video_url,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', shipment.id);
 
-          if (updateError) {
-            console.error(`Error updating shipment ${shipment.id}:`, updateError);
-          } else {
-            detected++;
+        if (updateError) {
+          console.error(`Error updating shipment ${shipment.id}:`, updateError);
+        } else {
+          detected++;
 
-            // Send thank you message
-            try {
-              const thankYouMessage = renderTemplate(content_posted_thanks, {
-                creator_name: creator.display_name || creator.tiktok_handle,
-                tiktok_handle: creator.tiktok_handle,
-                set_type: shipment.set_type || 'sample',
-                days_since_delivery: '0',
-                commission_rate: '0',
-                tier: 'bronze',
-              });
+          // Send thank you message
+          try {
+            const thankYouMessage = renderTemplate(content_posted_thanks, {
+              creator_name: creator.display_name || creator.tiktok_handle,
+              tiktok_handle: creator.tiktok_handle,
+              set_type: shipment.set_type || 'sample',
+              days_since_delivery: '0',
+              commission_rate: '0',
+              tier: 'bronze',
+            });
 
-              await this.notificationSender.sendDM(creator.tiktok_handle, thankYouMessage);
-            } catch (dmError) {
-              console.error(`Error sending thank you DM for creator ${creator.tiktok_handle}:`, dmError);
-            }
+            await this.notificationSender.sendDM(creator.tiktok_handle, thankYouMessage);
+          } catch (dmError) {
+            console.error(`Error sending thank you DM for creator ${creator.tiktok_handle}:`, dmError);
           }
         }
       }

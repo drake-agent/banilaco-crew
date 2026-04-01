@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Package, Truck, AlertCircle } from 'lucide-react';
 
 interface Sample {
@@ -17,39 +17,6 @@ interface SampleSet {
   tier?: string;
 }
 
-const mockSamples: Sample[] = [
-  {
-    id: '1',
-    name: 'Hero Routine Set',
-    status: 'delivered',
-    shippedDate: 'Feb 10',
-    tracking: 'TK928...454',
-  },
-  {
-    id: '2',
-    name: 'New Product: Vitamin C Serum',
-    status: 'shipped',
-    shippedDate: 'Mar 24',
-    tracking: 'TK931...221',
-  },
-];
-
-const availableSampleSets: SampleSet[] = [
-  {
-    name: 'Hero Set',
-    description: 'Cleanser + Toner + Serum + Moisturizer',
-  },
-  {
-    name: 'Premium Set',
-    description: 'Hero + Device + Special Mask',
-    tier: 'For Gold+ tier',
-  },
-  {
-    name: 'Mini Set',
-    description: '3 mini sizes',
-    tier: 'Quick try',
-  },
-];
 
 const getStatusBadgeColor = (status: Sample['status']) => {
   switch (status) {
@@ -74,6 +41,43 @@ const getStatusLabel = (status: Sample['status']) => {
 };
 
 export default function SamplesPage() {
+  const [mockSamples, setMockSamples] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchMySamples() {
+      try {
+        const res = await fetch('/api/samples?limit=50');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        setMockSamples(json.data || []);
+      } catch (err) {
+        console.error('Samples fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchMySamples();
+  }, []);
+
+  // Available sample sets (static config, or could be fetched)
+  const availableSampleSets: SampleSet[] = [
+    { name: 'Hero Set', description: 'Clean It Zero + Lip Tint' },
+    { name: 'Premium Set', description: 'Full skincare collection' },
+    { name: 'Mini Set', description: 'Travel-size essentials' },
+  ];
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-linear-to-br from-pink-50 to-white p-6 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-600 mb-4">Loading your samples...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-600 mx-auto"></div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-linear-to-br from-pink-50 to-white p-6">
       <div className="max-w-6xl mx-auto">

@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   BarChart,
   Bar,
@@ -17,44 +17,80 @@ import {
   Cell,
 } from 'recharts';
 
-// Mock data
-const mockKPIs = {
-  totalSignups: 156,
-  conversionRate: 42.5,
-  totalBonusesPaid: 3280,
-  avgReferralsPerCreator: 3.2,
-};
-
-const mockFunnelData = [
-  { name: 'Invited', value: 367 },
-  { name: 'Signed Up', value: 156 },
-  { name: 'Active', value: 89 },
-  { name: 'Qualified', value: 34 },
-];
-
-const mockTrendData = [
-  { month: 'Jan', referrals: 24, signups: 10, active: 6, qualified: 2 },
-  { month: 'Feb', referrals: 38, signups: 16, active: 9, qualified: 4 },
-  { month: 'Mar', referrals: 52, signups: 22, active: 12, qualified: 5 },
-  { month: 'Apr', referrals: 67, signups: 28, active: 15, qualified: 7 },
-  { month: 'May', referrals: 89, signups: 38, active: 20, qualified: 9 },
-  { month: 'Jun', referrals: 125, signups: 53, active: 28, qualified: 12 },
-];
-
-const mockTopReferrers = [
-  { creator: '@stylebyrose', referrals: 15, qualified: 8, earnings: 680 },
-  { creator: '@contentking', referrals: 12, qualified: 6, earnings: 510 },
-  { creator: '@beautybymia', referrals: 9, qualified: 3, earnings: 255 },
-  { creator: '@glowup_daily', referrals: 8, qualified: 4, earnings: 340 },
-  { creator: '@beauty_boost', referrals: 7, qualified: 3, earnings: 255 },
-  { creator: '@fitness_era', referrals: 6, qualified: 2, earnings: 170 },
-  { creator: '@creative_hub', referrals: 5, qualified: 2, earnings: 170 },
-  { creator: '@makeup_magic', referrals: 4, qualified: 1, earnings: 85 },
-];
-
 const COLORS = ['#10b981', '#3b82f6', '#8b5cf6', '#f59e0b'];
 
+interface FunnelItem {
+  name: string;
+  value: number;
+}
+
+interface TrendItem {
+  month: string;
+  referrals: number;
+  qualified: number;
+}
+
+interface LeaderboardItem {
+  name: string;
+  referrals: number;
+  bonus: number;
+}
+
+interface ReferralData {
+  stats?: {
+    total_referrals?: number;
+    conversion_rate?: number;
+    total_bonuses?: number;
+    avg_per_creator?: number;
+  };
+  leaderboard?: LeaderboardItem[];
+  funnel?: FunnelItem[];
+  trend?: TrendItem[];
+}
+
 export default function AdminReferralsPage() {
+  const [referralData, setReferralData] = useState<ReferralData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchReferrals() {
+      try {
+        const res = await fetch('/api/referrals');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        setReferralData(json);
+      } catch (err) {
+        console.error('Referrals fetch error:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchReferrals();
+  }, []);
+
+  // Derive display data from API response
+  const mockKPIs = {
+    totalSignups: referralData?.stats?.total_referrals || 0,
+    conversionRate: referralData?.stats?.conversion_rate || 0,
+    totalBonusesPaid: referralData?.stats?.total_bonuses || 0,
+    avgReferralsPerCreator: referralData?.stats?.avg_per_creator || 0,
+  };
+  const mockTopReferrers = referralData?.leaderboard || [];
+  const mockFunnelData = referralData?.funnel || [];
+  const mockTrendData = referralData?.trend || [];
+
+  if (loading) {
+    return (
+      <div className="p-6">
+        <div className="animate-pulse space-y-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-8 bg-gray-200 rounded" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 p-6">
       {/* Page Header */}
@@ -131,13 +167,26 @@ export default function AdminReferralsPage() {
           </BarChart>
         </ResponsiveContainer>
         <div className="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-200">
-          {mockFunnelData.map((item, idx) => {
-            const rate = idx === 0 ? 100 : ((mockFunnelData[idx].value / mockFunnelData[0].value) * 100).toFixed(1);
+          {mockFunnelData.map((item: FunnelItem, idx: number) => {
+            const rate =
+              idx === 0
+                ? 100
+                : (
+                    (mockFunnelData[idx].value /
+                      mockFunnelData[0].value) *
+                    100
+                  ).toFixed(1);
             return (
               <div key={item.name}>
-                <p className="text-sm text-gray-600 mb-1">{item.name}</p>
-                <p className="text-lg font-bold text-gray-900">{item.value}</p>
-                <p className="text-xs text-gray-500">{rate}% of invites</p>
+                <p className="text-sm text-gray-600 mb-1">
+                  {item.name}
+                </p>
+                <p className="text-lg font-bold text-gray-900">
+                  {item.value}
+                </p>
+                <p className="text-xs text-gray-500">
+                  {rate}% of invites
+                </p>
               </div>
             );
           })}
@@ -200,14 +249,21 @@ export default function AdminReferralsPage() {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ name, value }) => `${name}: ${value}`}
+                label={({ name, value }: FunnelItem) =>
+                  `${name}: ${value}`
+                }
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"
               >
-                {mockFunnelData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                ))}
+                {mockFunnelData.map(
+                  (entry: FunnelItem, index: number) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={COLORS[index % COLORS.length]}
+                    />
+                  )
+                )}
               </Pie>
               <Tooltip
                 contentStyle={{
@@ -238,25 +294,42 @@ export default function AdminReferralsPage() {
               </tr>
             </thead>
             <tbody>
-              {mockTopReferrers.map((referrer, idx) => {
-                const conversion = ((referrer.qualified / referrer.referrals) * 100).toFixed(1);
-                return (
-                  <tr
-                    key={referrer.creator}
-                    className={`${idx === mockTopReferrers.length - 1 ? '' : 'border-b border-gray-200'} hover:bg-gray-50`}
-                  >
-                    <td className="px-6 py-4 text-sm text-gray-900 font-medium">{referrer.creator}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{referrer.referrals}</td>
-                    <td className="px-6 py-4 text-sm">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                        {referrer.qualified}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900 font-semibold">${referrer.earnings}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{conversion}%</td>
-                  </tr>
-                );
-              })}
+              {mockTopReferrers.map(
+                (referrer: LeaderboardItem, idx: number) => {
+                  const conversion = (
+                    (referrer.bonus / referrer.referrals) *
+                    100
+                  ).toFixed(1);
+                  return (
+                    <tr
+                      key={referrer.name}
+                      className={`${
+                        idx === mockTopReferrers.length - 1
+                          ? ''
+                          : 'border-b border-gray-200'
+                      } hover:bg-gray-50`}
+                    >
+                      <td className="px-6 py-4 text-sm text-gray-900 font-medium">
+                        {referrer.name}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {referrer.referrals}
+                      </td>
+                      <td className="px-6 py-4 text-sm">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          {referrer.bonus}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-900 font-semibold">
+                        ${referrer.bonus}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-gray-600">
+                        {conversion}%
+                      </td>
+                    </tr>
+                  );
+                }
+              )}
             </tbody>
           </table>
         </div>

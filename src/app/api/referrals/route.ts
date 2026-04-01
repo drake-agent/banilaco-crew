@@ -81,7 +81,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'update_statuses') {
-      // Admin only - should verify auth token in production
+      // Verify admin role
+      const supabase = createServerClient();
+      const { data: { session } } = await supabase.auth.getSession();
+      const isAdmin = session?.user?.user_metadata?.role === 'admin';
+      if (!isAdmin) {
+        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+      }
       const result = await referralEngine.updateReferralStatuses();
       return NextResponse.json({ data: result });
     }

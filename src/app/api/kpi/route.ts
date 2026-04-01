@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase';
+import { clampPagination } from '@/lib/api';
 
 // SEC-1: Admin role verification helper
 async function verifyAdmin(request: NextRequest): Promise<{ authorized: boolean; userId?: string }> {

@@ -145,7 +145,8 @@ export class ReferralEngine {
       .from('referrals')
       .select('*')
       .in('status', ['invited', 'signed_up', 'active'])
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: true })
+      .limit(500);
 
     if (!referrals?.length) {
       return { upgraded: 0, bonuses_awarded: 0 };
