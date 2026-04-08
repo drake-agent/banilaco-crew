@@ -29,12 +29,13 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Creators', href: '/dashboard/creators', icon: Users },
+  { label: 'Missions', href: '/dashboard/missions', icon: BarChart3 },
+  { label: 'PINK LEAGUE', href: '/dashboard/league', icon: Gift },
+  { label: 'Squads', href: '/dashboard/squads', icon: Building2 },
   { label: 'Samples', href: '/dashboard/samples', icon: Package },
   { label: 'Outreach', href: '/dashboard/outreach', icon: Send },
   { label: 'Shipping', href: '/dashboard/shipping', icon: Truck },
   { label: 'KPI', href: '/dashboard/kpi', icon: BarChart3 },
-  { label: 'Referrals', href: '/dashboard/referrals', icon: Gift },
-  { label: 'MCN Partners', href: '/dashboard/mcn', icon: Building2 },
   { label: 'Applications', href: '/dashboard/applications', icon: FileText },
 ];
 
@@ -72,9 +73,9 @@ export default function DashboardLayout({
           <div className="flex items-center justify-between h-16 px-6 border-b border-gray-800">
             <Link href="/dashboard" className="flex items-center gap-2">
               <div className="w-8 h-8 bg-pink-500 rounded-lg flex items-center justify-center font-bold text-sm">
-                BC
+                BS
               </div>
-              <span className="font-bold text-lg">Banilaco Crew</span>
+              <span className="font-bold text-lg">BANILACO SQUAD</span>
             </Link>
             <button
               onClick={() => setSidebarOpen(false)}

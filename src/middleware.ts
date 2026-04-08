@@ -1,90 +1,50 @@
 // ============================================
-// Next.js Middleware - Route Protection
+// Next.js Middleware - Route Protection (NextAuth)
 // /dashboard → Admin 인증 필요
 // /creator   → Creator 인증 필요
 // ============================================
 
-import { createServerClient } from '@supabase/ssr';
+import { auth } from '@/lib/auth/config';
 import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
 
-export async function middleware(req: NextRequest) {
-  let res = NextResponse.next({ request: req });
-  const pathname = req.nextUrl.pathname;
+export default auth((req) => {
+  const { pathname } = req.nextUrl;
+  const user = req.auth?.user as Record<string, unknown> | undefined;
 
-  // Public routes — 인증 불필요
+  // Public routes — no auth needed
   if (
     pathname === '/' ||
     pathname === '/join' ||
     pathname === '/auth' ||
     pathname.startsWith('/api/join') ||
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/sync') ||
+    pathname.startsWith('/api/webhooks') ||
     pathname.startsWith('/_next') ||
     pathname.startsWith('/favicon')
   ) {
-    return res;
+    return NextResponse.next();
   }
 
-  // Sync API — 별도 Bearer 토큰 인증 (middleware에서 스킵)
-  if (pathname.startsWith('/api/sync')) {
-    return res;
-  }
-
-  // Supabase 세션 확인 (@supabase/ssr 방식)
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return req.cookies.getAll();
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            req.cookies.set(name, value);
-          });
-          res = NextResponse.next({ request: req });
-          cookiesToSet.forEach(({ name, value, options }) => {
-            res.cookies.set(name, value, options);
-          });
-        },
-      },
-    }
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  // 미인증 → /auth로 리다이렉트
+  // Not authenticated → redirect to /auth
   if (!user) {
     const authUrl = new URL('/auth', req.url);
     authUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(authUrl);
   }
 
-  // /creator 라우트 — creator_accounts에 연결된 유저만 접근
-  if (pathname.startsWith('/creator')) {
-    const { data: account } = await supabase
-      .from('creator_accounts')
-      .select('id')
-      .eq('auth_user_id', user.id)
-      .single();
-
-    if (!account) {
-      return NextResponse.redirect(new URL('/', req.url));
-    }
-  }
-
-  // /dashboard 라우트 — admin 체크
+  // /dashboard → admin only
   if (pathname.startsWith('/dashboard')) {
-    const userRole = user.user_metadata?.role;
-    if (userRole !== 'admin') {
+    if (user.role !== 'admin') {
       return NextResponse.redirect(new URL('/', req.url));
     }
   }
 
-  return res;
-}
+  // /creator → must have creator role or linked account
+  // Fine-grained check happens in API guards (getCreatorFromAuth)
+
+  return NextResponse.next();
+});
 
 export const config = {
   matcher: [
@@ -97,5 +57,9 @@ export const config = {
     '/api/creator/:path*',
     '/api/referrals/:path*',
     '/api/reminders/:path*',
+    '/api/missions/:path*',
+    '/api/league/:path*',
+    '/api/squad/:path*',
+    '/api/discord/:path*',
   ],
 };

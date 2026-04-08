@@ -1,88 +1,72 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
-import { clampPagination, pickFields } from '@/lib/api';
+import { db } from '@/db';
+import { creators } from '@/db/schema/creators';
+import { verifyAdmin } from '@/lib/auth';
+import { eq, ilike, desc, sql, and, count } from 'drizzle-orm';
 
-// Sanitize search input to prevent PostgREST injection (VULN-002)
-function sanitizeSearch(input: string): string {
-  return input
-    .replace(/\\/g, '\\\\')
-    .replace(/%/g, '\\%')
-    .replace(/_/g, '\\_')
-    .slice(0, 100); // Max 100 chars
-}
-
-// Whitelist allowed fields for creator insert (VULN-008)
-const ALLOWED_CREATE_FIELDS = [
-  'tiktok_handle', 'display_name', 'email', 'instagram_handle',
-  'source', 'status', 'follower_count', 'competitor_brands', 'notes',
-] as const;
-
+/**
+ * GET /api/creators — Admin: list creators with search/filter/pagination
+ */
 export async function GET(request: NextRequest) {
-  const supabase = createServerClient();
-  const { searchParams } = new URL(request.url);
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
 
+  const { searchParams } = new URL(request.url);
+  const search = searchParams.get('search')?.slice(0, 100) ?? '';
   const tier = searchParams.get('tier');
-  const source = searchParams.get('source');
   const status = searchParams.get('status');
-  const search = searchParams.get('search');
-  const rawPage = parseInt(searchParams.get('page') || '1');
-  const rawLimit = parseInt(searchParams.get('limit') || '20');
-  const { page, limit } = clampPagination(rawPage, rawLimit);
+  const source = searchParams.get('source');
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20')));
   const offset = (page - 1) * limit;
 
-  let query = supabase
-    .from('creators')
-    .select('*', { count: 'exact' });
-
-  if (tier) query = query.eq('tier', tier);
-  if (source) query = query.eq('source', source);
-  if (status) query = query.eq('status', status);
+  const conditions = [];
   if (search) {
-    const sanitized = sanitizeSearch(search);
-    query = query.or(`tiktok_handle.ilike.%${sanitized}%,display_name.ilike.%${sanitized}%`);
+    // Sanitize search (VULN-002)
+    const sanitized = search.replace(/[\\%_]/g, '');
+    conditions.push(
+      sql`(${ilike(creators.tiktokHandle, `%${sanitized}%`)} OR ${ilike(creators.displayName, `%${sanitized}%`)} OR ${ilike(creators.email, `%${sanitized}%`)})`,
+    );
   }
+  if (tier) conditions.push(eq(creators.tier, tier));
+  if (status) conditions.push(eq(creators.status, status as typeof creators.status.enumValues[number]));
+  if (source) conditions.push(eq(creators.source, source as typeof creators.source.enumValues[number]));
 
-  const { data, error, count } = await query
-    .order('monthly_gmv', { ascending: false })
-    .range(offset, offset + limit - 1);
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  if (error) {
-    console.error('GET /api/creators error:', error);
-    return NextResponse.json({ error: 'Failed to fetch creators' }, { status: 500 });
-  }
+  const [data, [totalResult]] = await Promise.all([
+    db.select().from(creators).where(where)
+      .orderBy(desc(sql`COALESCE(${creators.monthlyGmv}, '0')::numeric`))
+      .limit(limit).offset(offset),
+    db.select({ count: count() }).from(creators).where(where),
+  ]);
 
   return NextResponse.json({
-    data,
-    pagination: {
-      page,
-      limit,
-      total: count || 0,
-      totalPages: Math.ceil((count || 0) / limit),
-    },
+    creators: data,
+    pagination: { page, limit, total: totalResult?.count ?? 0, totalPages: Math.ceil((totalResult?.count ?? 0) / limit) },
   });
 }
 
+/**
+ * POST /api/creators — Admin: add a creator
+ */
 export async function POST(request: NextRequest) {
-  const supabase = createServerClient();
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
+
   const body = await request.json();
 
-  // Whitelist allowed fields (VULN-008)
-  const cleanedBody = pickFields<any>(body, ALLOWED_CREATE_FIELDS);
-
-  if (!cleanedBody.tiktok_handle) {
-    return NextResponse.json({ error: 'tiktok_handle is required' }, { status: 400 });
+  const allowed = ['tiktokHandle', 'displayName', 'email', 'instagramHandle', 'source', 'mcnName', 'tags', 'notes', 'followerCount'] as const;
+  const values: Record<string, unknown> = {};
+  for (const key of allowed) {
+    if (body[key] !== undefined) values[key] = body[key];
   }
 
-  const { data, error } = await supabase
-    .from('creators')
-    .insert(cleanedBody)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('POST /api/creators error:', error);
-    return NextResponse.json({ error: 'Failed to create creator' }, { status: 500 });
+  if (!values.tiktokHandle) {
+    return NextResponse.json({ error: 'tiktokHandle is required' }, { status: 400 });
   }
 
-  return NextResponse.json({ data }, { status: 201 });
+  const [newCreator] = await db.insert(creators).values(values as typeof creators.$inferInsert).returning();
+
+  return NextResponse.json({ creator: newCreator }, { status: 201 });
 }

@@ -8,12 +8,17 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <div className="text-2xl font-bold gradient-text">
-              Banilaco Crew
+              BANILACO SQUAD
             </div>
           </div>
-          <Link href="/join" className="btn-primary text-sm sm:text-base">
-            Apply Now
-          </Link>
+          <div className="flex items-center gap-3">
+            <Link href="/auth" className="btn-outline text-sm">
+              Sign In
+            </Link>
+            <Link href="/join" className="btn-primary text-sm sm:text-base">
+              Join Squad
+            </Link>
+          </div>
         </div>
       </nav>
 
@@ -23,19 +28,24 @@ export default function Home() {
 
         <div className="section-container text-center">
           <div className="animate-fade-in-up">
+            <p className="text-pink-600 font-semibold text-sm sm:text-base mb-4 tracking-widest uppercase">
+              K-Beauty Creator Program
+            </p>
+
             <h1 className="section-title">
               Join the{' '}
-              <span className="gradient-text">Banilaco Crew</span>
+              <span className="gradient-text">BANILACO SQUAD</span>
             </h1>
 
             <p className="section-subtitle mx-auto text-lg sm:text-xl text-gray-600 mb-4">
-              Turn your passion for K-beauty into income
+              Earn daily with missions. Compete in PINK LEAGUE. Grow your Squad.
             </p>
 
             <p className="text-base sm:text-lg text-gray-500 max-w-3xl mx-auto mb-10">
-              Earn <span className="font-bold text-pink-600">30-40% commission</span> on every sale,
-              receive <span className="font-bold text-orange-600">free product samples</span>,
-              and join an exclusive community of 5,000+ creators
+              Complete daily missions to earn{' '}
+              <span className="font-bold text-pink-600">Flat Fee + 10-18% commission</span>,
+              climb the <span className="font-bold text-orange-600">PINK LEAGUE</span> rankings,
+              and build your <span className="font-bold text-purple-600">Squad</span> for ongoing revenue share
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -51,231 +61,201 @@ export default function Home() {
           {/* Social Proof */}
           <div className="mt-16 pt-16 border-t border-gray-200">
             <p className="text-gray-600 text-sm sm:text-base mb-8">
-              Join thousands of creators already earning with banila co
+              Join the K-beauty creator movement with banila co
             </p>
-            <div className="grid grid-cols-3 gap-8 max-w-md mx-auto">
+            <div className="grid grid-cols-4 gap-6 max-w-lg mx-auto">
               <div>
                 <p className="text-3xl sm:text-4xl font-bold gradient-text">5K+</p>
-                <p className="text-gray-600 text-sm mt-2">Active Creators</p>
+                <p className="text-gray-600 text-sm mt-2">Creators</p>
               </div>
               <div>
                 <p className="text-3xl sm:text-4xl font-bold gradient-text">$2M+</p>
                 <p className="text-gray-600 text-sm mt-2">Paid Out</p>
               </div>
               <div>
-                <p className="text-3xl sm:text-4xl font-bold gradient-text">40%</p>
+                <p className="text-3xl sm:text-4xl font-bold gradient-text">18%</p>
                 <p className="text-gray-600 text-sm mt-2">Max Commission</p>
+              </div>
+              <div>
+                <p className="text-3xl sm:text-4xl font-bold gradient-text">5%</p>
+                <p className="text-gray-600 text-sm mt-2">Squad Bonus</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Benefits Section */}
+      {/* 3-Pillar Value Prop */}
       <section className="section-container bg-gray-50 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
-        <h2 className="section-title text-center">Why Join Banilaco Crew?</h2>
+        <h2 className="section-title text-center">How BANILACO SQUAD Works</h2>
+        <p className="section-subtitle text-center mb-12">Three ways to earn, one community to grow</p>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 mt-12">
-          {/* Benefit 1 */}
-          <div className="card">
-            <div className="text-4xl mb-4">💰</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Lucrative Commissions</h3>
-            <p className="text-gray-600">
-              Earn up to 40% commission on every sale. Higher tiers unlock better rates and exclusive perks.
+        <div className="grid md:grid-cols-3 gap-8">
+          <div className="card text-center">
+            <div className="text-5xl mb-4">🎯</div>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">Daily Missions</h3>
+            <p className="text-gray-600 mb-4">
+              Complete Learning, Creation, and Viral missions every day.
+              Earn Flat Fee regardless of sales — your effort always pays.
             </p>
+            <div className="text-sm text-pink-600 font-semibold">Flat Fee + Pink Score</div>
           </div>
 
-          {/* Benefit 2 */}
-          <div className="card">
-            <div className="text-4xl mb-4">📦</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Free Samples</h3>
-            <p className="text-gray-600">
-              Get complimentary access to our full product range. Create authentic content with products you love.
+          <div className="card text-center border-2 border-pink-200">
+            <div className="text-5xl mb-4">🏆</div>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">PINK LEAGUE</h3>
+            <p className="text-gray-600 mb-4">
+              Compete in 4-week seasons. Top 10 earn Pink Crown status
+              with BANILA CO Summit invites and collab product launches.
             </p>
+            <div className="text-sm text-pink-600 font-semibold">Pink Score = GMV + Viral Index</div>
           </div>
 
-          {/* Benefit 3 */}
-          <div className="card">
-            <div className="text-4xl mb-4">👥</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Exclusive Community</h3>
-            <p className="text-gray-600">
-              Connect with fellow creators, share strategies, and grow together in our private community.
+          <div className="card text-center">
+            <div className="text-5xl mb-4">👥</div>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">Build Your Squad</h3>
+            <p className="text-gray-600 mb-4">
+              Recruit creators and earn 2-5% of your team&apos;s sales.
+              Ongoing revenue share — not just a one-time bonus.
             </p>
-          </div>
-
-          {/* Benefit 4 */}
-          <div className="card">
-            <div className="text-4xl mb-4">📊</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Real-Time Analytics</h3>
-            <p className="text-gray-600">
-              Track clicks, conversions, and earnings in real-time with our comprehensive dashboard.
-            </p>
-          </div>
-
-          {/* Benefit 5 */}
-          <div className="card">
-            <div className="text-4xl mb-4">🎁</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Monthly Bonuses</h3>
-            <p className="text-gray-600">
-              Earn extra rewards for hitting performance milestones and exclusive seasonal promotions.
-            </p>
-          </div>
-
-          {/* Benefit 6 */}
-          <div className="card">
-            <div className="text-4xl mb-4">🚀</div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Growth Support</h3>
-            <p className="text-gray-600">
-              Get content ideas, strategy tips, and marketing support to help you succeed.
-            </p>
+            <div className="text-sm text-pink-600 font-semibold">Ongoing 2-5% Revenue Share</div>
           </div>
         </div>
       </section>
 
-      {/* Commission Tiers Section */}
+      {/* Pink Tier System */}
       <section className="section-container">
-        <h2 className="section-title text-center">Commission Tiers</h2>
+        <h2 className="section-title text-center">Pink Tier System</h2>
         <p className="section-subtitle text-center mb-12">
-          Unlock higher commissions as you grow
+          Complete missions or hit sales milestones to level up
         </p>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Bronze Tier */}
-          <div className="card border-2 border-gray-300">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">🥉 Bronze</h3>
-            <p className="text-sm text-gray-600 mb-4">Get started</p>
-            <div className="text-3xl font-bold gradient-text mb-6">30%</div>
+          {/* Pink Petal */}
+          <div className="card border-2 border-pink-200">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">🌸 Pink Petal</h3>
+            <p className="text-sm text-gray-600 mb-4">Join + AI profile</p>
+            <div className="text-3xl font-bold gradient-text mb-2">10%</div>
+            <p className="text-xs text-gray-500 mb-4">+ Flat Fee per mission</p>
             <ul className="space-y-3 text-sm text-gray-600">
               <li className="flex items-start">
                 <span className="text-pink-500 mr-2">✓</span>
-                <span>Basic sample access</span>
+                <span>Daily mission access</span>
               </li>
               <li className="flex items-start">
                 <span className="text-pink-500 mr-2">✓</span>
-                <span>Community access</span>
+                <span>Brand education tools</span>
               </li>
               <li className="flex items-start">
                 <span className="text-pink-500 mr-2">✓</span>
-                <span>Monthly newsletter</span>
+                <span>Discord community</span>
               </li>
             </ul>
           </div>
 
-          {/* Silver Tier */}
-          <div className="card border-2 border-pink-200 relative">
+          {/* Pink Rose */}
+          <div className="card border-2 border-rose-300 relative">
             <div className="absolute -top-3 -right-3 bg-pink-500 text-white px-3 py-1 rounded-full text-xs font-bold">
               Popular
             </div>
-            <h3 className="text-lg font-bold text-gray-900 mb-2">🥈 Silver</h3>
-            <p className="text-sm text-gray-600 mb-4">5K+ followers</p>
-            <div className="text-3xl font-bold gradient-text mb-6">35%</div>
+            <h3 className="text-lg font-bold text-gray-900 mb-2">🌹 Pink Rose</h3>
+            <p className="text-sm text-gray-600 mb-4">50 missions or $500 GMV</p>
+            <div className="text-3xl font-bold gradient-text mb-2">12%</div>
+            <p className="text-xs text-gray-500 mb-4">+ Flat Fee + 2% Squad bonus</p>
             <ul className="space-y-3 text-sm text-gray-600">
               <li className="flex items-start">
                 <span className="text-pink-500 mr-2">✓</span>
-                <span>Full sample sets</span>
+                <span>New product early access</span>
               </li>
               <li className="flex items-start">
                 <span className="text-pink-500 mr-2">✓</span>
-                <span>VIP community access</span>
+                <span>Welcome gift package</span>
               </li>
               <li className="flex items-start">
                 <span className="text-pink-500 mr-2">✓</span>
-                <span>Monthly bonuses</span>
-              </li>
-              <li className="flex items-start">
-                <span className="text-pink-500 mr-2">✓</span>
-                <span>Content templates</span>
+                <span>Squad recruitment</span>
               </li>
             </ul>
           </div>
 
-          {/* Gold Tier */}
-          <div className="card border-2 border-orange-300">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">🥇 Gold</h3>
-            <p className="text-sm text-gray-600 mb-4">15K+ followers</p>
-            <div className="text-3xl font-bold gradient-text mb-6">40%</div>
+          {/* Pink Diamond */}
+          <div className="card border-2 border-cyan-300">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">💎 Pink Diamond</h3>
+            <p className="text-sm text-gray-600 mb-4">200 missions or $2,500 GMV</p>
+            <div className="text-3xl font-bold gradient-text mb-2">15%</div>
+            <p className="text-xs text-gray-500 mb-4">+ Premium Fee + 3% Squad bonus</p>
             <ul className="space-y-3 text-sm text-gray-600">
               <li className="flex items-start">
-                <span className="text-orange-500 mr-2">✓</span>
-                <span>All products access</span>
+                <span className="text-cyan-500 mr-2">✓</span>
+                <span>PINK LEAGUE entry</span>
               </li>
               <li className="flex items-start">
-                <span className="text-orange-500 mr-2">✓</span>
-                <span>Exclusive collaborations</span>
+                <span className="text-cyan-500 mr-2">✓</span>
+                <span>Banilaco social featuring</span>
               </li>
               <li className="flex items-start">
-                <span className="text-orange-500 mr-2">✓</span>
-                <span>Performance bonuses</span>
-              </li>
-              <li className="flex items-start">
-                <span className="text-orange-500 mr-2">✓</span>
-                <span>Monthly strategy calls</span>
+                <span className="text-cyan-500 mr-2">✓</span>
+                <span>Premium sample sets</span>
               </li>
             </ul>
           </div>
 
-          {/* Diamond Tier */}
-          <div className="card border-2 border-purple-300">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">💎 Diamond</h3>
-            <p className="text-sm text-gray-600 mb-4">50K+ followers</p>
-            <div className="text-3xl font-bold gradient-text mb-6">40%+</div>
+          {/* Pink Crown */}
+          <div className="card border-2 border-amber-400 bg-gradient-to-b from-white to-amber-50">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">👑 Pink Crown</h3>
+            <p className="text-sm text-gray-600 mb-4">League champion or $10K GMV</p>
+            <div className="text-3xl font-bold gradient-text mb-2">18%+</div>
+            <p className="text-xs text-gray-500 mb-4">+ Annual Fee + 5% Squad bonus</p>
             <ul className="space-y-3 text-sm text-gray-600">
               <li className="flex items-start">
-                <span className="text-purple-500 mr-2">✓</span>
-                <span>Custom commission rates</span>
+                <span className="text-amber-500 mr-2">✓</span>
+                <span>BANILA CO SUMMIT 2026 VIP</span>
               </li>
               <li className="flex items-start">
-                <span className="text-purple-500 mr-2">✓</span>
-                <span>Dedicated manager</span>
+                <span className="text-amber-500 mr-2">✓</span>
+                <span>IP Festival invitation</span>
               </li>
               <li className="flex items-start">
-                <span className="text-purple-500 mr-2">✓</span>
-                <span>Co-creation opportunities</span>
-              </li>
-              <li className="flex items-start">
-                <span className="text-purple-500 mr-2">✓</span>
-                <span>Priority support</span>
+                <span className="text-amber-500 mr-2">✓</span>
+                <span>Collab product launch</span>
               </li>
             </ul>
           </div>
         </div>
       </section>
 
-      {/* How It Works Section */}
+      {/* How It Works */}
       <section id="how-it-works" className="section-container bg-gray-50 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8">
-        <h2 className="section-title text-center">How It Works</h2>
+        <h2 className="section-title text-center">Get Started in 3 Steps</h2>
 
         <div className="grid md:grid-cols-3 gap-8 mt-12">
-          {/* Step 1 */}
           <div className="text-center">
             <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <span className="text-2xl font-bold gradient-text">1</span>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Apply</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">Join via Discord</h3>
             <p className="text-gray-600">
-              Fill out our quick application form. Tell us about your content style and why you love K-beauty.
+              Sign in with Discord, link your TikTok, and complete your AI profile to unlock Pink Petal tier.
             </p>
           </div>
 
-          {/* Step 2 */}
           <div className="text-center">
             <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <span className="text-2xl font-bold gradient-text">2</span>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Get Approved</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">Complete Missions</h3>
             <p className="text-gray-600">
-              We'll review your application and send you your unique affiliate link and sample products.
+              Daily Learning, Creation, and Viral missions. Earn Flat Fee + Score instantly.
             </p>
           </div>
 
-          {/* Step 3 */}
           <div className="text-center">
             <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-6">
               <span className="text-2xl font-bold gradient-text">3</span>
             </div>
-            <h3 className="text-xl font-bold text-gray-900 mb-3">Create & Earn</h3>
+            <h3 className="text-xl font-bold text-gray-900 mb-3">Level Up & Earn</h3>
             <p className="text-gray-600">
-              Share your authentic content, track your earnings, and watch your commissions grow.
+              Climb tiers, compete in PINK LEAGUE, and build your Squad for ongoing revenue share.
             </p>
           </div>
         </div>
@@ -286,13 +266,18 @@ export default function Home() {
         <div className="absolute inset-0 bg-linear-to-r from-pink-100 to-orange-100 -z-10" />
 
         <div className="section-container text-center">
-          <h2 className="section-title">Ready to Join?</h2>
+          <h2 className="section-title">Ready to Join the Squad?</h2>
           <p className="section-subtitle mx-auto mb-8">
-            Start your journey as a Banilaco Crew member today
+            Start earning today with BANILACO SQUAD
           </p>
-          <Link href="/join" className="btn-primary inline-block">
-            Apply Now
-          </Link>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <Link href="/join" className="btn-primary inline-block">
+              Join BANILACO SQUAD
+            </Link>
+            <a href="https://discord.gg/your-invite" className="btn-outline inline-block" target="_blank" rel="noopener noreferrer">
+              Join Discord
+            </a>
+          </div>
         </div>
       </section>
 
@@ -300,94 +285,45 @@ export default function Home() {
       <footer className="bg-gray-900 text-gray-300 py-12">
         <div className="section-container">
           <div className="grid md:grid-cols-4 gap-8 mb-8">
-            {/* Brand */}
             <div>
-              <h3 className="text-white font-bold mb-4">Banilaco Crew</h3>
+              <h3 className="text-white font-bold mb-4">BANILACO SQUAD</h3>
               <p className="text-sm">
-                K-beauty affiliate program for creators passionate about skincare and beauty.
+                K-beauty creator program powered by daily missions, PINK LEAGUE, and Squad rewards.
               </p>
             </div>
 
-            {/* Links */}
             <div>
               <h4 className="text-white font-semibold mb-4">Program</h4>
               <ul className="space-y-2 text-sm">
-                <li>
-                  <a href="#" className="hover:text-pink-500 transition">
-                    About Program
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-pink-500 transition">
-                    FAQ
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-pink-500 transition">
-                    Terms & Conditions
-                  </a>
-                </li>
+                <li><a href="#" className="hover:text-pink-500 transition">About</a></li>
+                <li><a href="#" className="hover:text-pink-500 transition">FAQ</a></li>
+                <li><a href="#" className="hover:text-pink-500 transition">Terms</a></li>
               </ul>
             </div>
 
-            {/* Resources */}
             <div>
-              <h4 className="text-white font-semibold mb-4">Resources</h4>
+              <h4 className="text-white font-semibold mb-4">Community</h4>
               <ul className="space-y-2 text-sm">
-                <li>
-                  <a href="#" className="hover:text-pink-500 transition">
-                    Help Center
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-pink-500 transition">
-                    Content Ideas
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-pink-500 transition">
-                    Blog
-                  </a>
-                </li>
+                <li><a href="https://discord.gg/your-invite" className="hover:text-pink-500 transition">Discord</a></li>
+                <li><a href="#" className="hover:text-pink-500 transition">TikTok</a></li>
+                <li><a href="#" className="hover:text-pink-500 transition">Instagram</a></li>
               </ul>
             </div>
 
-            {/* Contact */}
             <div>
               <h4 className="text-white font-semibold mb-4">Contact</h4>
               <ul className="space-y-2 text-sm">
-                <li>
-                  <a
-                    href="mailto:crew@banila.co"
-                    className="hover:text-pink-500 transition"
-                  >
-                    crew@banila.co
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-pink-500 transition">
-                    Instagram
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="hover:text-pink-500 transition">
-                    TikTok
-                  </a>
-                </li>
+                <li><a href="mailto:squad@banila.co" className="hover:text-pink-500 transition">squad@banila.co</a></li>
               </ul>
             </div>
           </div>
 
           <div className="border-t border-gray-700 pt-8">
             <div className="flex flex-col sm:flex-row justify-between items-center text-sm">
-              <p>&copy; 2024 Banila Co. All rights reserved.</p>
+              <p>&copy; 2026 Banila Co. All rights reserved.</p>
               <div className="flex gap-6 mt-4 sm:mt-0">
-                <a href="#" className="hover:text-pink-500 transition">
-                  Privacy Policy
-                </a>
-                <a href="#" className="hover:text-pink-500 transition">
-                  Terms of Service
-                </a>
+                <a href="#" className="hover:text-pink-500 transition">Privacy</a>
+                <a href="#" className="hover:text-pink-500 transition">Terms</a>
               </div>
             </div>
           </div>

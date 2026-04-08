@@ -1,135 +1,110 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+import { db } from '@/db';
+import { creators, TIER_CONFIG, type PinkTier } from '@/db/schema/creators';
+import { contentTracking } from '@/db/schema/content';
+import { missionCompletions } from '@/db/schema/missions';
+import { getCreatorFromAuth } from '@/lib/auth';
+import { eq, desc, sql, gte, count } from 'drizzle-orm';
 
-// GET: Fetch creator's own dashboard data
-export async function GET(request: NextRequest) {
-  const supabase = createServerClient();
-  const { searchParams } = new URL(request.url);
-  const creatorId = searchParams.get('id');
+/**
+ * GET /api/creator — Creator's own dashboard data
+ */
+export async function GET() {
+  const result = await getCreatorFromAuth();
+  if (result.error) return result.error;
 
-  if (!creatorId) {
-    return NextResponse.json({ error: 'Creator ID required' }, { status: 400 });
-  }
+  const { creator } = result;
+  const tierConfig = TIER_CONFIG[creator.tier as PinkTier];
 
-  // SECURITY: Verify authentication (VULN-001)
-  const authHeader = request.headers.get('authorization');
-  const sessionCookie = request.cookies.get('sb-access-token')?.value;
-  if (!authHeader && !sessionCookie) {
-    return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-  }
+  // Recent content (last 30 days)
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const recentContent = await db
+    .select({
+      views: contentTracking.views,
+      likes: contentTracking.likes,
+      comments: contentTracking.comments,
+      shares: contentTracking.shares,
+      gmvAttributed: contentTracking.gmvAttributed,
+    })
+    .from(contentTracking)
+    .where(
+      sql`${contentTracking.creatorId} = ${creator.id} AND ${contentTracking.postedAt} >= ${thirtyDaysAgo}`,
+    )
+    .orderBy(desc(contentTracking.postedAt))
+    .limit(50);
 
-  // Verify ownership — check that authed user owns this creator
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.user) {
-    const { data: account } = await supabase
-      .from('creator_accounts')
-      .select('creator_id')
-      .eq('auth_user_id', session.user.id)
-      .single();
+  // Mission stats (this month)
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
 
-    if (account && account.creator_id !== creatorId) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  const [monthlyMissions] = await db
+    .select({ count: count() })
+    .from(missionCompletions)
+    .where(
+      sql`${missionCompletions.creatorId} = ${creator.id} AND ${missionCompletions.completedAt} >= ${monthStart}`,
+    );
+
+  // Compute stats
+  const totalViews = recentContent.reduce((sum, c) => sum + (c.views ?? 0), 0);
+  const totalLikes = recentContent.reduce((sum, c) => sum + (c.likes ?? 0), 0);
+  const avgViews = recentContent.length > 0 ? Math.round(totalViews / recentContent.length) : 0;
+
+  // Tier progress
+  const tierOrder: PinkTier[] = ['pink_petal', 'pink_rose', 'pink_diamond', 'pink_crown'];
+  const currentIdx = tierOrder.indexOf(creator.tier as PinkTier);
+  const thresholds: Record<string, { missions: number | null; gmv: number }> = {
+    pink_rose: { missions: 50, gmv: 500 },
+    pink_diamond: { missions: 200, gmv: 2500 },
+    pink_crown: { missions: null, gmv: 10000 },
+  };
+
+  let tierProgress = null;
+  if (currentIdx < tierOrder.length - 1) {
+    const nextTier = tierOrder[currentIdx + 1];
+    const threshold = thresholds[nextTier];
+    if (threshold) {
+      const missionPct = threshold.missions
+        ? Math.min(100, ((creator.missionCount ?? 0) / threshold.missions) * 100)
+        : 0;
+      const gmvPct = Math.min(100, (parseFloat(creator.monthlyGmv ?? '0') / threshold.gmv) * 100);
+      tierProgress = {
+        nextTier,
+        nextTierLabel: TIER_CONFIG[nextTier].label,
+        nextTierEmoji: TIER_CONFIG[nextTier].emoji,
+        missionProgress: threshold.missions ? { current: creator.missionCount ?? 0, target: threshold.missions, pct: Math.round(missionPct) } : null,
+        gmvProgress: { current: parseFloat(creator.monthlyGmv ?? '0'), target: threshold.gmv, pct: Math.round(gmvPct) },
+        overallPct: Math.round(Math.max(missionPct, gmvPct)),
+      };
     }
   }
 
-  // Fetch creator profile
-  const { data: creator, error: creatorError } = await supabase
-    .from('creators')
-    .select('*')
-    .eq('id', creatorId)
-    .single();
-
-  if (creatorError || !creator) {
-    return NextResponse.json({ error: 'Creator not found' }, { status: 404 });
-  }
-
-  // Fetch their samples
-  const { data: samples } = await supabase
-    .from('sample_shipments')
-    .select('*')
-    .eq('creator_id', creatorId)
-    .order('created_at', { ascending: false });
-
-  // Fetch their content
-  const { data: content } = await supabase
-    .from('content_tracking')
-    .select('*')
-    .eq('creator_id', creatorId)
-    .limit(30)
-    .order('posted_at', { ascending: false });
-
-  // Calculate improvement recommendations based on their data
-  const avgCtr = content?.length
-    ? content.reduce((sum, c) => sum + (typeof c.ctr === 'number' ? c.ctr : 0), 0) / content.length
-    : 0;
-  const avgCvr = content?.length
-    ? content.reduce((sum, c) => sum + (typeof c.cvr === 'number' ? c.cvr : 0), 0) / content.length
-    : 0;
-
-  // Get top creators for comparison (aggregate)
-  const { data: topCreators } = await supabase
-    .from('creators')
-    .select('monthly_gmv, monthly_content_count')
-    .eq('tier', 'gold')
-    .order('monthly_gmv', { ascending: false })
-    .limit(10);
-
-  const topAvgGmv = topCreators?.length
-    ? topCreators.reduce((sum, c) => sum + c.monthly_gmv, 0) / topCreators.length
-    : 0;
-
-  // Build tier progress
-  const tierProgress = {
-    currentTier: creator.tier,
-    currentGmv: creator.monthly_gmv ?? 0,
-    currentContent: creator.monthly_content_count,
-    nextTier: creator.tier === 'bronze' ? 'silver' : creator.tier === 'silver' ? 'gold' : creator.tier === 'gold' ? 'diamond' : 'diamond',
-    gmvNeeded: creator.tier === 'bronze' ? 0 : creator.tier === 'silver' ? 1000 : creator.tier === 'gold' ? 5000 : 0,
-    gmvRemaining: creator.tier === 'silver' ? Math.max(0, 1000 - (creator.monthly_gmv ?? 0)) : creator.tier === 'gold' ? Math.max(0, 5000 - (creator.monthly_gmv ?? 0)) : 0,
-    contentNeeded: creator.tier === 'bronze' ? 5 : 0,
-  };
-
-  // Build recommendations
-  const recommendations = [];
-  if (avgCtr < 3.5) {
-    recommendations.push({
-      category: 'Hook',
-      priority: 'high',
-      current: `Average CTR: ${avgCtr.toFixed(1)}%`,
-      recommendation: 'Use stronger hooks in the first 1.5 seconds. Top creators show Before/After in the first frame.',
-      impact: '+40% CTR expected',
-    });
-  }
-  if (creator.monthly_content_count < 5) {
-    recommendations.push({
-      category: 'Posting Frequency',
-      priority: 'medium',
-      current: `${creator.monthly_content_count} posts/month`,
-      recommendation: 'Post 3+ times per week for algorithm boost and faster tier progression.',
-      impact: '+5% Commission at Silver',
-    });
-  }
-  if (avgCvr < 2.0) {
-    recommendations.push({
-      category: 'CTA Placement',
-      priority: 'medium',
-      current: `Average CVR: ${avgCvr.toFixed(1)}%`,
-      recommendation: 'Add a CTA at the 30-second mark instead of only at the end.',
-      impact: '+35% CVR expected',
-    });
-  }
-
   return NextResponse.json({
-    creator,
-    samples: samples || [],
-    content: content || [],
-    tierProgress,
-    recommendations,
-    comparison: {
-      yourAvgGmv: creator.monthly_gmv ?? 0,
-      topAvgGmv,
-      yourAvgCtr: avgCtr,
-      yourAvgCvr: avgCvr,
+    creator: {
+      id: creator.id,
+      tiktokHandle: creator.tiktokHandle,
+      displayName: creator.displayName,
+      tier: creator.tier,
+      tierLabel: tierConfig.label,
+      tierEmoji: tierConfig.emoji,
+      commissionRate: parseFloat(creator.commissionRate ?? '0'),
+      squadBonusRate: parseFloat(creator.squadBonusRate ?? '0'),
+      missionCount: creator.missionCount ?? 0,
+      pinkScore: parseFloat(creator.pinkScore ?? '0'),
+      flatFeeEarned: parseFloat(creator.flatFeeEarned ?? '0'),
+      monthlyGmv: parseFloat(creator.monthlyGmv ?? '0'),
+      totalGmv: parseFloat(creator.totalGmv ?? '0'),
+      followerCount: creator.followerCount ?? 0,
+      avgViews: creator.avgViews ?? 0,
+      engagementRate: parseFloat(creator.engagementRate ?? '0'),
     },
+    stats: {
+      totalViews,
+      totalLikes,
+      avgViews,
+      contentCount: recentContent.length,
+      monthlyMissions: monthlyMissions?.count ?? 0,
+    },
+    tierProgress,
   });
 }

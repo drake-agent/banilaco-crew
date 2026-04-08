@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+import { db } from '@/db';
+import { joinApplications } from '@/db/schema/applications';
 import { z } from 'zod';
 
 const joinSchema = z.object({
@@ -7,26 +8,26 @@ const joinSchema = z.object({
   display_name: z.string().optional(),
   email: z.string().email('Valid email is required'),
   instagram_handle: z.string().optional(),
-  follower_count: z.number().optional(),
+  follower_count: z.string().optional(),
   content_categories: z.array(z.string()).default([]),
   why_join: z.string().optional(),
-  competitor_experience: z.array(z.string()).default([]),
+  brand_experience: z.array(z.string()).default([]),
+  squad_code: z.string().optional(),
 });
 
-// SEC-2: Simple in-memory rate limiter (per IP, 5 requests per hour)
+// Rate limiter (per IP, 5 requests per hour)
 const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 5;
-const RATE_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+const RATE_WINDOW_MS = 60 * 60 * 1000;
 
 function checkRateLimit(ip: string): boolean {
   const now = Date.now();
   const entry = rateLimitMap.get(ip);
 
-  // Clean up stale entries periodically
   if (rateLimitMap.size > 10000) {
-    Array.from(rateLimitMap.entries()).forEach(([key, val]) => {
+    for (const [key, val] of rateLimitMap.entries()) {
       if (val.resetAt < now) rateLimitMap.delete(key);
-    });
+    }
   }
 
   if (!entry || entry.resetAt < now) {
@@ -40,12 +41,11 @@ function checkRateLimit(ip: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  // SEC-2: Rate limit check
   const clientIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown';
   if (!checkRateLimit(clientIp)) {
     return NextResponse.json(
       { error: 'Too many applications. Please try again later.' },
-      { status: 429 }
+      { status: 429 },
     );
   }
 
@@ -53,47 +53,37 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = joinSchema.parse(body);
 
-    const supabase = createServerClient();
-
-    const { data, error } = await supabase
-      .from('join_applications')
-      .insert({
-        tiktok_handle: validated.tiktok_handle,
-        display_name: validated.display_name || null,
+    const [application] = await db
+      .insert(joinApplications)
+      .values({
+        tiktokHandle: validated.tiktok_handle,
+        displayName: validated.display_name || null,
         email: validated.email,
-        instagram_handle: validated.instagram_handle || null,
-        follower_count: validated.follower_count || null,
-        content_categories: validated.content_categories,
-        why_join: validated.why_join || null,
-        competitor_experience: validated.competitor_experience,
+        instagramHandle: validated.instagram_handle || null,
+        followerCount: validated.follower_count || null,
+        contentCategories: validated.content_categories,
+        whyJoin: validated.why_join || null,
+        brandExperience: validated.brand_experience,
+        squadCode: validated.squad_code || null,
         status: 'pending',
       })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json(
-        { error: 'Failed to submit application' },
-        { status: 500 }
-      );
-    }
+      .returning();
 
     return NextResponse.json(
-      { message: 'Application submitted successfully', data },
-      { status: 201 }
+      { message: 'Application submitted successfully', data: application },
+      { status: 201 },
     );
   } catch (err) {
     if (err instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Validation failed', details: err.errors },
-        { status: 400 }
+        { status: 400 },
       );
     }
-    console.error('Error:', err);
+    console.error('[join] Error:', err);
     return NextResponse.json(
       { error: 'Internal server error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
