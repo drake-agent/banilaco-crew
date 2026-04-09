@@ -1,7 +1,16 @@
-# Banilaco Crew — K-Beauty Creator Program Platform
+# BANILACO SQUAD — K-Beauty Creator Program Platform
 
-TikTok Shop 어필리에이트 30,000명 모집을 위한 크리에이터 관리 플랫폼.
-TikTok이 크리에이터에게 직접 커미션을 지급하는 구조이며, Banilaco Crew는 크리에이터 모집/관리/샘플 발송/성과 추적을 담당합니다.
+> "습관이 성과가 되고, 성과가 명예가 되는 크리에이터 주도 성장 엔진"
+
+TikTok Shop 어필리에이트 크리에이터 관리 플랫폼. Daily Missions + PINK LEAGUE + Squad 수익공유.
+
+## Tech Stack
+- **Frontend**: Next.js 16.2 (App Router) + TypeScript + Tailwind CSS
+- **Backend**: Next.js API Routes + PostgreSQL + Drizzle ORM
+- **Auth**: NextAuth.js (Discord OAuth)
+- **Community**: Discord Bot (discord.js v14) + 4-Layer Memory (effy pattern)
+- **AI**: Anthropic Claude (recommendations, distiller, agent)
+- **Integrations**: TikTok Shop API, AfterShip, Apify Crawler
 
 ## Tech Stack
 

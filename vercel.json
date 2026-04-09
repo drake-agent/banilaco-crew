@@ -4,17 +4,37 @@
     {
       "path": "/api/sync",
       "schedule": "0 18 * * *",
-      "comment": "매일 새벽 3AM KST (UTC 18:00 전일) — 프로필 + 콘텐츠 + 메트릭 풀 싱크"
+      "comment": "Full sync — profiles + content + metrics (KST 3AM)"
     },
     {
       "path": "/api/sync",
       "schedule": "0 3,9,15,21 * * *",
-      "comment": "6시간마다 KST 12PM/6PM/12AM/6AM (UTC 03/09/15/21) — TikTok Shop 주문 동기화"
+      "comment": "Shop orders sync every 6h (KST 12PM/6PM/12AM/6AM)"
     },
     {
       "path": "/api/sync",
       "schedule": "0 0 * * 1,4",
-      "comment": "월/목 9AM KST (UTC 00:00) — 경쟁사 크리에이터 디스커버리"
+      "comment": "Competitor discovery Mon/Thu (KST 9AM)"
+    },
+    {
+      "path": "/api/sync?type=shipping_track",
+      "schedule": "0 */2 * * *",
+      "comment": "Sample shipping tracking every 2h"
+    },
+    {
+      "path": "/api/reminders",
+      "schedule": "0 15 * * *",
+      "comment": "Process reminders daily (KST midnight)"
+    },
+    {
+      "path": "/api/league?action=daily_snapshot",
+      "schedule": "0 21 * * *",
+      "comment": "PINK LEAGUE daily ranking snapshot (KST 6AM)"
+    },
+    {
+      "path": "/api/squad?action=calculate_bonuses",
+      "schedule": "0 17 1 * *",
+      "comment": "Squad bonus calculation monthly 1st (KST 2AM)"
     }
   ]
 }
