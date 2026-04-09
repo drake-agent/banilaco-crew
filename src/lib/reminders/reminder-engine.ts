@@ -1,14 +1,20 @@
-// TODO: Migrate to Drizzle ORM
-import { db } from '@/db';
-// @ts-expect-error — Legacy Supabase import, pending full migration
-import { createServerClient } from '@/lib/supabase';
-import { SampleShipment, Creator, SampleStatus } from '@/types/database';
-import { INotificationSender } from './notification-sender';
-import { renderTemplate, reminder1_dm, reminder1_email, reminder2_dm, reminder2_email, content_posted_thanks } from './templates';
+/**
+ * Reminder Engine — Drizzle ORM
+ *
+ * Sends reminders to creators who received samples but haven't posted content.
+ * Timeline: Day 5 → reminder_1, Day 10 → reminder_2, Day 14 → no_response
+ */
 
-export interface ShipmentWithCreator extends SampleShipment {
-  creator: Creator;
-}
+import { db } from '@/db';
+import { sampleShipments } from '@/db/schema/samples';
+import { creators } from '@/db/schema/creators';
+import { contentTracking } from '@/db/schema/content';
+import { eq, and, isNull, isNotNull, lte, sql } from 'drizzle-orm';
+import { INotificationSender } from './notification-sender';
+import {
+  renderTemplate, reminder1_dm, reminder1_email,
+  reminder2_dm, reminder2_email, content_posted_thanks,
+} from './templates';
 
 export interface ReminderResult {
   reminder1Sent: number;
@@ -19,392 +25,187 @@ export interface ReminderResult {
 }
 
 export class ReminderEngine {
-  private supabase = createServerClient();
-  private notificationSender: INotificationSender;
+  private sender: INotificationSender;
 
   constructor(notificationSender: INotificationSender) {
-    this.notificationSender = notificationSender;
+    this.sender = notificationSender;
   }
 
-  /**
-   * Main entry point: scan all shipped/delivered samples and process reminders
-   */
   async processReminders(): Promise<ReminderResult> {
     const result: ReminderResult = {
-      reminder1Sent: 0,
-      reminder2Sent: 0,
-      markedNoResponse: 0,
-      contentDetected: 0,
-      errors: [],
+      reminder1Sent: 0, reminder2Sent: 0,
+      markedNoResponse: 0, contentDetected: 0, errors: [],
     };
 
     try {
-      // Get all delivered shipments without content posted
-      const { data: shipments, error } = await this.supabase
-        .from('sample_shipments')
-        .select('*, creator:creators(id, tiktok_handle, display_name, email, tier, commission_rate)')
-        .eq('status', 'delivered')
-        .is('content_posted_at', null)
-        .order('delivered_at', { ascending: true });
+      // Auto-detect content first
+      result.contentDetected = await this.autoDetectContentPosted();
 
-      if (error) {
-        throw new Error(`Failed to fetch shipments: ${error.message}`);
+      // Get delivered shipments needing reminders
+      const shipments = await db
+        .select({
+          id: sampleShipments.id,
+          status: sampleShipments.status,
+          setType: sampleShipments.setType,
+          deliveredAt: sampleShipments.deliveredAt,
+          reminder1SentAt: sampleShipments.reminder1SentAt,
+          reminder2SentAt: sampleShipments.reminder2SentAt,
+          creatorId: sampleShipments.creatorId,
+          creatorHandle: creators.tiktokHandle,
+          creatorName: creators.displayName,
+          creatorEmail: creators.email,
+          creatorTier: creators.tier,
+          creatorCommission: creators.commissionRate,
+        })
+        .from(sampleShipments)
+        .leftJoin(creators, eq(sampleShipments.creatorId, creators.id))
+        .where(
+          and(
+            sql`${sampleShipments.status} IN ('delivered', 'reminder_1')`,
+            isNotNull(sampleShipments.deliveredAt),
+            isNull(sampleShipments.contentPostedAt),
+          ),
+        );
+
+      const now = Date.now();
+      const fiveDaysMs = 5 * 86400000;
+      const tenDaysMs = 10 * 86400000;
+      const fourteenDaysMs = 14 * 86400000;
+
+      for (const s of shipments) {
+        if (!s.deliveredAt) continue;
+        const daysSince = now - s.deliveredAt.getTime();
+        const daysCount = Math.floor(daysSince / 86400000);
+
+        const templateVars = {
+          creator_name: s.creatorName || s.creatorHandle || '',
+          tiktok_handle: s.creatorHandle || '',
+          set_type: s.setType || 'sample',
+          days_since_delivery: daysCount.toString(),
+          commission_rate: s.creatorCommission?.toString() ?? '0.10',
+          tier: s.creatorTier || 'pink_petal',
+        };
+
+        try {
+          // Day 14+ → no_response
+          if (daysSince >= fourteenDaysMs && s.status === 'reminder_1' && !s.reminder2SentAt) {
+            // Send reminder 2 first, then mark no_response if past 14d
+          }
+
+          // Day 10+ → reminder_2
+          if (daysSince >= tenDaysMs && s.status === 'reminder_1' && !s.reminder2SentAt) {
+            const dmSent = await this.sender.sendDM(s.creatorHandle!, renderTemplate(reminder2_dm, templateVars));
+            if (!dmSent) continue;
+            if (s.creatorEmail) {
+              await this.sender.sendEmail(s.creatorEmail, 'Last Reminder: Post Your BANILACO SQUAD Content', renderTemplate(reminder2_email, templateVars));
+            }
+            await db.update(sampleShipments).set({
+              status: 'reminder_2', reminder2SentAt: new Date(), updatedAt: new Date(),
+            }).where(eq(sampleShipments.id, s.id));
+            result.reminder2Sent++;
+            continue;
+          }
+
+          // Day 5+ → reminder_1
+          if (daysSince >= fiveDaysMs && s.status === 'delivered' && !s.reminder1SentAt) {
+            const dmSent = await this.sender.sendDM(s.creatorHandle!, renderTemplate(reminder1_dm, templateVars));
+            if (!dmSent) continue;
+            if (s.creatorEmail) {
+              await this.sender.sendEmail(s.creatorEmail, 'Your BANILACO SQUAD Sample', renderTemplate(reminder1_email, templateVars));
+            }
+            await db.update(sampleShipments).set({
+              status: 'reminder_1', reminder1SentAt: new Date(), updatedAt: new Date(),
+            }).where(eq(sampleShipments.id, s.id));
+            result.reminder1Sent++;
+          }
+        } catch (err) {
+          result.errors.push({ shipmentId: s.id, error: err instanceof Error ? err.message : 'Unknown' });
+        }
       }
 
-      if (!shipments || shipments.length === 0) {
-        return result;
-      }
+      // Mark 14-day no_response
+      const fourteenDaysAgo = new Date(now - fourteenDaysMs);
+      const noResponseResult = await db.update(sampleShipments).set({
+        status: 'no_response', updatedAt: new Date(),
+      }).where(
+        and(
+          eq(sampleShipments.status, 'reminder_2'),
+          isNotNull(sampleShipments.deliveredAt),
+          lte(sampleShipments.deliveredAt, fourteenDaysAgo),
+        ),
+      ).returning({ id: sampleShipments.id });
 
-      const shipmentList = shipments as ShipmentWithCreator[];
+      result.markedNoResponse = noResponseResult.length;
 
-      // Auto-detect content posted
-      const contentDetected = await this.autoDetectContentPosted();
-      result.contentDetected = contentDetected;
-
-      // Re-fetch shipments after content detection
-      const { data: updatedShipments } = await this.supabase
-        .from('sample_shipments')
-        .select('*, creator:creators(id, tiktok_handle, display_name, email, tier, commission_rate)')
-        .eq('status', 'delivered')
-        .is('content_posted_at', null)
-        .order('delivered_at', { ascending: true });
-
-      const activeShipments = (updatedShipments || []) as ShipmentWithCreator[];
-
-      // Process reminders by age
-      result.reminder1Sent = await this.sendReminder1(activeShipments);
-      result.reminder2Sent = await this.sendReminder2(activeShipments);
-      result.markedNoResponse = await this.markNoResponse(activeShipments);
-    } catch (error) {
-      console.error('ReminderEngine.processReminders error:', error);
-      result.errors.push({
-        shipmentId: 'global',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      });
+    } catch (err) {
+      result.errors.push({ shipmentId: 'global', error: err instanceof Error ? err.message : 'Unknown' });
     }
 
     return result;
   }
 
-  /**
-   * Send Reminder 1: 5 days after delivery, no content posted yet
-   */
-  private async sendReminder1(shipments: ShipmentWithCreator[]): Promise<number> {
-    let sent = 0;
-    const fiveDaysAgo = this.getDaysAgoDate(5);
-
-    for (const shipment of shipments) {
-      if (!shipment.delivered_at || shipment.reminder_1_sent_at) {
-        continue;
-      }
-
-      const deliveredDate = new Date(shipment.delivered_at);
-      if (deliveredDate > fiveDaysAgo) {
-        continue; // Not 5 days yet
-      }
-
-      try {
-        const creator = shipment.creator as Creator;
-        if (!creator) {
-          console.warn(`Shipment ${shipment.id} has no creator, skipping reminder_1`);
-          continue;
-        }
-
-        const daysSinceDelivery = Math.floor(
-          (Date.now() - new Date(shipment.delivered_at).getTime()) / (1000 * 60 * 60 * 24)
-        );
-
-        const dmMessage = renderTemplate(reminder1_dm, {
-          creator_name: creator.display_name || creator.tiktok_handle,
-          tiktok_handle: creator.tiktok_handle,
-          set_type: shipment.set_type || 'sample',
-          days_since_delivery: daysSinceDelivery.toString(),
-          commission_rate: creator.commission_rate.toString(),
-          tier: creator.tier,
-        });
-
-        const emailSubject = `Your Banilaco Sample - ${shipment.set_type} Set`;
-        const emailBody = renderTemplate(reminder1_email, {
-          creator_name: creator.display_name || creator.tiktok_handle,
-          tiktok_handle: creator.tiktok_handle,
-          set_type: shipment.set_type || 'sample',
-          days_since_delivery: daysSinceDelivery.toString(),
-          commission_rate: creator.commission_rate.toString(),
-          tier: creator.tier,
-        });
-
-        // Send notifications — verify at least DM succeeds before marking sent (SC-004)
-        const dmSent = await this.notificationSender.sendDM(creator.tiktok_handle, dmMessage);
-        if (!dmSent) {
-          console.warn(`DM send failed for shipment ${shipment.id}, skipping status update`);
-          continue;
-        }
-        if (creator.email) {
-          await this.notificationSender.sendEmail(creator.email, emailSubject, emailBody);
-        }
-
-        // Update shipment status
-        const { error } = await this.supabase
-          .from('sample_shipments')
-          .update({
-            status: 'reminder_1' as SampleStatus,
-            reminder_1_sent_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', shipment.id);
-
-        if (error) {
-          throw error;
-        }
-
-        sent++;
-      } catch (error) {
-        console.error(`Error sending reminder_1 for shipment ${shipment.id}:`, error);
-      }
-    }
-
-    return sent;
-  }
-
-  /**
-   * Send Reminder 2: 10 days after delivery, still no content
-   */
-  private async sendReminder2(shipments: ShipmentWithCreator[]): Promise<number> {
-    let sent = 0;
-    const tenDaysAgo = this.getDaysAgoDate(10);
-
-    for (const shipment of shipments) {
-      if (!shipment.delivered_at || shipment.reminder_2_sent_at) {
-        continue;
-      }
-
-      const deliveredDate = new Date(shipment.delivered_at);
-      if (deliveredDate > tenDaysAgo) {
-        continue; // Not 10 days yet
-      }
-
-      try {
-        const creator = shipment.creator as Creator;
-        if (!creator) {
-          console.warn(`Shipment ${shipment.id} has no creator, skipping reminder_2`);
-          continue;
-        }
-
-        const daysSinceDelivery = Math.floor(
-          (Date.now() - new Date(shipment.delivered_at).getTime()) / (1000 * 60 * 60 * 24)
-        );
-
-        const dmMessage = renderTemplate(reminder2_dm, {
-          creator_name: creator.display_name || creator.tiktok_handle,
-          tiktok_handle: creator.tiktok_handle,
-          set_type: shipment.set_type || 'sample',
-          days_since_delivery: daysSinceDelivery.toString(),
-          commission_rate: creator.commission_rate.toString(),
-          tier: creator.tier,
-        });
-
-        const emailSubject = `Last Reminder: Post Your Banilaco Content & Earn Commission`;
-        const emailBody = renderTemplate(reminder2_email, {
-          creator_name: creator.display_name || creator.tiktok_handle,
-          tiktok_handle: creator.tiktok_handle,
-          set_type: shipment.set_type || 'sample',
-          days_since_delivery: daysSinceDelivery.toString(),
-          commission_rate: creator.commission_rate.toString(),
-          tier: creator.tier,
-        });
-
-        // Send notifications — verify at least DM succeeds before marking sent (SC-004)
-        const dmSent = await this.notificationSender.sendDM(creator.tiktok_handle, dmMessage);
-        if (!dmSent) {
-          console.warn(`DM send failed for shipment ${shipment.id}, skipping status update`);
-          continue;
-        }
-        if (creator.email) {
-          await this.notificationSender.sendEmail(creator.email, emailSubject, emailBody);
-        }
-
-        // Update shipment status
-        const { error } = await this.supabase
-          .from('sample_shipments')
-          .update({
-            status: 'reminder_2' as SampleStatus,
-            reminder_2_sent_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', shipment.id);
-
-        if (error) {
-          throw error;
-        }
-
-        sent++;
-      } catch (error) {
-        console.error(`Error sending reminder_2 for shipment ${shipment.id}:`, error);
-      }
-    }
-
-    return sent;
-  }
-
-  /**
-   * Mark as no_response: 14 days after delivery, still no content
-   */
-  private async markNoResponse(shipments: ShipmentWithCreator[]): Promise<number> {
-    let marked = 0;
-    const fourteenDaysAgo = this.getDaysAgoDate(14);
-
-    for (const shipment of shipments) {
-      if (!shipment.delivered_at) {
-        continue;
-      }
-
-      const deliveredDate = new Date(shipment.delivered_at);
-      if (deliveredDate > fourteenDaysAgo) {
-        continue; // Not 14 days yet
-      }
-
-      try {
-        const { error } = await this.supabase
-          .from('sample_shipments')
-          .update({
-            status: 'no_response' as SampleStatus,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', shipment.id);
-
-        if (error) {
-          throw error;
-        }
-
-        marked++;
-      } catch (error) {
-        console.error(`Error marking no_response for shipment ${shipment.id}:`, error);
-      }
-    }
-
-    return marked;
-  }
-
-  /**
-   * Auto-detect content posted: check if creator has posted since delivery
-   * This would check against a content_tracking table or external TikTok API
-   */
   async autoDetectContentPosted(): Promise<number> {
     let detected = 0;
 
-    try {
-      // Get all delivered shipments without content posted
-      const { data: shipments, error } = await this.supabase
-        .from('sample_shipments')
-        .select('*, creator:creators(id, tiktok_handle, tiktok_id)')
-        .eq('status', 'delivered')
-        .is('content_posted_at', null);
+    const deliveredShipments = await db
+      .select({
+        id: sampleShipments.id,
+        creatorId: sampleShipments.creatorId,
+        deliveredAt: sampleShipments.deliveredAt,
+        creatorHandle: creators.tiktokHandle,
+        creatorName: creators.displayName,
+      })
+      .from(sampleShipments)
+      .leftJoin(creators, eq(sampleShipments.creatorId, creators.id))
+      .where(
+        and(
+          sql`${sampleShipments.status} IN ('delivered', 'reminder_1', 'reminder_2')`,
+          isNotNull(sampleShipments.deliveredAt),
+          isNull(sampleShipments.contentPostedAt),
+        ),
+      );
 
-      if (error) {
-        throw error;
-      }
+    for (const shipment of deliveredShipments) {
+      if (!shipment.deliveredAt) continue;
 
-      if (!shipments || shipments.length === 0) {
-        return detected;
-      }
+      const [content] = await db
+        .select({ id: contentTracking.id, videoUrl: contentTracking.videoUrl, postedAt: contentTracking.postedAt })
+        .from(contentTracking)
+        .where(
+          and(
+            eq(contentTracking.creatorId, shipment.creatorId),
+            sql`${contentTracking.postedAt} >= ${shipment.deliveredAt}`,
+          ),
+        )
+        .limit(1);
 
-      // Collect all unique creator IDs for batch query
-      const creatorIds: string[] = [];
-      const shipmentMap = new Map<string, ShipmentWithCreator>();
+      if (content) {
+        await db.update(sampleShipments).set({
+          status: 'content_posted',
+          contentPostedAt: content.postedAt ?? new Date(),
+          contentUrl: content.videoUrl,
+          updatedAt: new Date(),
+        }).where(eq(sampleShipments.id, shipment.id));
 
-      for (const shipment of shipments as ShipmentWithCreator[]) {
-        const creator = shipment.creator as Creator;
-        if (!creator) {
-          console.warn(`Shipment ${shipment.id} has no creator, skipping content detection`);
-          continue;
-        }
-        creatorIds.push(creator.id);
-        shipmentMap.set(creator.id, shipment);
-      }
+        detected++;
 
-      if (creatorIds.length === 0) {
-        return detected;
-      }
-
-      // Single batch query: fetch all content for these creators
-      const { data: allContentTracking, error: batchError } = await this.supabase
-        .from('content_tracking')
-        .select('id, creator_id, video_url, created_at')
-        .in('creator_id', creatorIds);
-
-      if (batchError) {
-        console.warn('Error fetching batch content_tracking:', batchError);
-        return detected;
-      }
-
-      // Build a Map of creator_id → latest content (newest created_at wins)
-      const contentMap = new Map<string, typeof allContentTracking[0]>();
-      if (allContentTracking) {
-        for (const content of allContentTracking) {
-          const existing = contentMap.get(content.creator_id);
-          if (!existing || new Date(content.created_at) > new Date(existing.created_at)) {
-            contentMap.set(content.creator_id, content);
+        // Send thank you
+        try {
+          if (shipment.creatorHandle) {
+            await this.sender.sendDM(
+              shipment.creatorHandle,
+              renderTemplate(content_posted_thanks, {
+                creator_name: shipment.creatorName || shipment.creatorHandle,
+                tiktok_handle: shipment.creatorHandle,
+                set_type: 'sample', days_since_delivery: '0',
+                commission_rate: '0', tier: 'pink_petal',
+              }),
+            );
           }
-        }
+        } catch { /* non-critical */ }
       }
-
-      // Process shipments against the pre-fetched content map
-      for (const shipment of shipments as ShipmentWithCreator[]) {
-        const creator = shipment.creator as Creator;
-        if (!creator) continue;
-
-        const contentTracking = contentMap.get(creator.id);
-        if (!contentTracking || !shipment.delivered_at || new Date(contentTracking.created_at) <= new Date(shipment.delivered_at)) {
-          continue;
-        }
-
-        // Content detected! Mark shipment as content_posted
-        const { error: updateError } = await this.supabase
-          .from('sample_shipments')
-          .update({
-            status: 'content_posted' as SampleStatus,
-            content_posted_at: contentTracking.created_at,
-            content_url: contentTracking.video_url,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', shipment.id);
-
-        if (updateError) {
-          console.error(`Error updating shipment ${shipment.id}:`, updateError);
-        } else {
-          detected++;
-
-          // Send thank you message
-          try {
-            const thankYouMessage = renderTemplate(content_posted_thanks, {
-              creator_name: creator.display_name || creator.tiktok_handle,
-              tiktok_handle: creator.tiktok_handle,
-              set_type: shipment.set_type || 'sample',
-              days_since_delivery: '0',
-              commission_rate: '0',
-              tier: 'bronze',
-            });
-
-            await this.notificationSender.sendDM(creator.tiktok_handle, thankYouMessage);
-          } catch (dmError) {
-            console.error(`Error sending thank you DM for creator ${creator.tiktok_handle}:`, dmError);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('ReminderEngine.autoDetectContentPosted error:', error);
     }
 
     return detected;
-  }
-
-  /**
-   * Helper: get date N days ago
-   */
-  private getDaysAgoDate(days: number): Date {
-    const date = new Date();
-    date.setDate(date.getDate() - days);
-    date.setHours(0, 0, 0, 0);
-    return date;
   }
 }

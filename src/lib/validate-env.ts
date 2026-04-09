@@ -1,6 +1,6 @@
 /**
  * Validate required environment variables at startup.
- * Call this from middleware or layout to catch config errors early.
+ * Updated for BANILACO SQUAD (PostgreSQL + NextAuth + Discord).
  */
 
 interface EnvCheck {
@@ -10,22 +10,28 @@ interface EnvCheck {
 }
 
 const ENV_CHECKS: EnvCheck[] = [
-  // Core Supabase
-  { key: 'NEXT_PUBLIC_SUPABASE_URL', required: true, group: 'Supabase' },
-  { key: 'NEXT_PUBLIC_SUPABASE_ANON_KEY', required: true, group: 'Supabase' },
-  { key: 'SUPABASE_SERVICE_ROLE_KEY', required: true, group: 'Supabase' },
+  // Database
+  { key: 'DATABASE_URL', required: true, group: 'Database' },
+  // NextAuth
+  { key: 'NEXTAUTH_SECRET', required: true, group: 'Auth' },
+  { key: 'NEXTAUTH_URL', required: true, group: 'Auth' },
+  // Discord
+  { key: 'DISCORD_CLIENT_ID', required: true, group: 'Discord' },
+  { key: 'DISCORD_CLIENT_SECRET', required: true, group: 'Discord' },
+  { key: 'DISCORD_BOT_TOKEN', required: false, group: 'Discord Bot' },
+  { key: 'DISCORD_GUILD_ID', required: false, group: 'Discord Bot' },
   // TikTok Shop
   { key: 'TIKTOK_SHOP_APP_KEY', required: true, group: 'TikTok' },
   { key: 'TIKTOK_SHOP_APP_SECRET', required: true, group: 'TikTok' },
   // Cron
   { key: 'CRON_SECRET', required: true, group: 'Cron' },
+  // AI
+  { key: 'ANTHROPIC_API_KEY', required: false, group: 'AI' },
   // Optional
   { key: 'AFTERSHIP_WEBHOOK_SECRET', required: false, group: 'Shipping' },
   { key: 'AFTERSHIP_API_KEY', required: false, group: 'Shipping' },
   { key: 'APIFY_API_TOKEN', required: false, group: 'Crawler' },
-  { key: 'CRAWLER_BASE_URL', required: false, group: 'Crawler' },
   { key: 'RESEND_API_KEY', required: false, group: 'Email' },
-  { key: 'DISCORD_WEBHOOK_URL', required: false, group: 'Notifications' },
 ];
 
 let validated = false;
@@ -48,10 +54,10 @@ export function validateEnv(): { valid: boolean; missing: string[]; warnings: st
   }
 
   if (missing.length > 0) {
-    console.error('❌ Missing required environment variables:\n  ' + missing.join('\n  '));
+    console.error('Missing required environment variables:\n  ' + missing.join('\n  '));
   }
   if (warnings.length > 0) {
-    console.warn('⚠️  Optional environment variables not set:\n  ' + warnings.join('\n  '));
+    console.warn('Optional environment variables not set:\n  ' + warnings.join('\n  '));
   }
 
   validated = true;

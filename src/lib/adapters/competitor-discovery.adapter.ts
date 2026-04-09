@@ -21,10 +21,9 @@ import type {
   DiscoveredCreator,
   CrawledVideo,
 } from './types';
-// TODO: Migrate to Drizzle ORM
 import { db } from '@/db';
-// @ts-expect-error — Legacy Supabase import, pending full migration
-import { createServerClient } from '@/lib/supabase';
+import { creators } from '@/db/schema/creators';
+import { ilike, inArray } from 'drizzle-orm';
 
 // 경쟁사 브랜드별 기본 해시태그 매핑
 export const COMPETITOR_HASHTAG_MAP: Record<string, string[]> = {
@@ -105,18 +104,17 @@ export class CompetitorDiscoveryAdapter implements ICompetitorDiscoveryAdapter {
       return p.follower_count >= minFollowers && avgViews >= minAvgViews;
     });
 
-    // 4단계: 기존 DB 대조
-    const supabase = createServerClient();
-    const { data: existingCreators } = await supabase
-      .from('creators')
-      .select('tiktok_handle')
-      .in(
-        'tiktok_handle',
-        qualified.map((p) => p.tiktok_handle)
-      );
+    // 4단계: 기존 DB 대조 (Drizzle)
+    const qualifiedHandles = qualified.map((p) => p.tiktok_handle);
+    const existingCreators = qualifiedHandles.length > 0
+      ? await db
+          .select({ tiktokHandle: creators.tiktokHandle })
+          .from(creators)
+          .where(inArray(creators.tiktokHandle, qualifiedHandles))
+      : [];
 
     const existingHandles = new Set(
-      (existingCreators || []).map((c) => c.tiktok_handle.toLowerCase())
+      existingCreators.map((c) => c.tiktokHandle.toLowerCase())
     );
 
     // 5단계: DiscoveredCreator 매핑
