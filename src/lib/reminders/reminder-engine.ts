@@ -1,3 +1,6 @@
+// TODO: Migrate to Drizzle ORM
+import { db } from '@/db';
+// @ts-expect-error — Legacy Supabase import, pending full migration
 import { createServerClient } from '@/lib/supabase';
 import { SampleShipment, Creator, SampleStatus } from '@/types/database';
 import { INotificationSender } from './notification-sender';

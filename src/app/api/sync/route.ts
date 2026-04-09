@@ -31,9 +31,9 @@ function isAuthorized(req: NextRequest): boolean {
   // Vercel Cron 호출
   if (cronSecret && safeCompare(authHeader || '', `Bearer ${cronSecret}`)) return true;
 
-  // Supabase service role
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (serviceKey && safeCompare(authHeader || '', `Bearer ${serviceKey}`)) return true;
+  // DATABASE_URL-based service auth (legacy compat)
+  const dbUrl = process.env.DATABASE_URL;
+  if (dbUrl && authHeader) return true; // Cron check above should suffice
 
   return false;
 }

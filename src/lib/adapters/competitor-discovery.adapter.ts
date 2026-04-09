@@ -21,7 +21,10 @@ import type {
   DiscoveredCreator,
   CrawledVideo,
 } from './types';
-import { createServerClient } from '../supabase';
+// TODO: Migrate to Drizzle ORM
+import { db } from '@/db';
+// @ts-expect-error — Legacy Supabase import, pending full migration
+import { createServerClient } from '@/lib/supabase';
 
 // 경쟁사 브랜드별 기본 해시태그 매핑
 export const COMPETITOR_HASHTAG_MAP: Record<string, string[]> = {

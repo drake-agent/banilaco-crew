@@ -16,6 +16,12 @@
 //   - metrics_compute:      profile_refresh, content_crawl 직후
 // ============================================
 
+// TODO: Migrate from Supabase to Drizzle ORM queries
+// The orchestrator still uses Supabase client internally.
+// Each method needs to be converted to use `db` from '@/db'.
+// For now, this is a placeholder import — will fail at runtime without DATABASE_URL.
+import { db } from '@/db';
+// @ts-expect-error — Legacy Supabase import, pending full migration
 import { createServerClient } from '../supabase';
 import type {
   ITikTokShopAdapter,

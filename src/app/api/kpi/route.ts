@@ -1,131 +1,101 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
-import { clampPagination } from '@/lib/api';
+import { db } from '@/db';
+import { weeklyKpis } from '@/db/schema/kpi';
+import { creators } from '@/db/schema/creators';
+import { sampleShipments } from '@/db/schema/samples';
+import { outreachPipeline } from '@/db/schema/outreach';
+import { verifyAdmin } from '@/lib/auth';
+import { desc, eq, count, sql } from 'drizzle-orm';
 
-// SEC-1: Admin role verification helper
-async function verifyAdmin(request: NextRequest): Promise<{ authorized: boolean; userId?: string }> {
-  try {
-    const supabase = createServerClient();
-    const authHeader = request.headers.get('authorization');
-    const sessionCookie = request.cookies.get('sb-access-token')?.value;
+export async function GET() {
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
 
-    if (!authHeader && !sessionCookie) {
-      return { authorized: false };
-    }
-
-    const { data: { user }, error } = await supabase.auth.getUser(
-      authHeader?.replace('Bearer ', '') || sessionCookie || ''
-    );
-
-    if (error || !user) return { authorized: false };
-
-    const role = user.user_metadata?.role;
-    if (role !== 'admin') return { authorized: false };
-
-    return { authorized: true, userId: user.id };
-  } catch {
-    return { authorized: false };
-  }
-}
-
-export async function GET(request: NextRequest) {
-  const { authorized } = await verifyAdmin(request);
-  if (!authorized) {
-    return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-  }
-
-  const supabase = createServerClient();
-
-  const { data, error } = await supabase
-    .from('weekly_kpis')
-    .select('*')
-    .order('week_number', { ascending: true });
-
-  if (error) {
-    console.error('[KPI GET] Database error:', error.message);
-    return NextResponse.json({ error: 'Failed to fetch KPI data' }, { status: 500 });
-  }
+  const data = await db.select().from(weeklyKpis).orderBy(desc(weeklyKpis.weekStarting));
 
   return NextResponse.json({ data });
 }
 
 export async function POST(request: NextRequest) {
-  const { authorized } = await verifyAdmin(request);
-  if (!authorized) {
-    return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-  }
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
 
-  const supabase = createServerClient();
   const body = await request.json();
 
-  // BUG-4: Guard division by zero in weeks_to_30k calculation
+  // BUG-4: Guard division by zero
   if (body.weekly_net_increase !== undefined && body.cumulative_affiliates !== undefined) {
     const remaining = 30000 - (Number(body.cumulative_affiliates) || 0);
     const weeklyIncrease = Number(body.weekly_net_increase) || 0;
-
-    if (remaining <= 0) {
-      body.weeks_to_30k = 0; // Already at or past 30K
-    } else if (weeklyIncrease > 0) {
-      body.weeks_to_30k = parseFloat((remaining / weeklyIncrease).toFixed(1));
-    } else {
-      body.weeks_to_30k = null; // Cannot project with zero/negative growth
-    }
+    if (remaining <= 0) body.weeks_to_30k = 0;
+    else if (weeklyIncrease > 0) body.weeks_to_30k = parseFloat((remaining / weeklyIncrease).toFixed(1));
+    else body.weeks_to_30k = null;
   }
 
-  const { data, error } = await supabase
-    .from('weekly_kpis')
-    .insert(body)
-    .select()
-    .single();
+  const [kpi] = await db.insert(weeklyKpis).values({
+    weekStarting: body.week_starting,
+    cumulativeAffiliates: body.cumulative_affiliates,
+    weeklyNewAffiliates: body.weekly_new_affiliates,
+    churned: body.churned,
+    netIncrease: body.net_increase ?? body.weekly_net_increase,
+    monthlyGmv: body.monthly_gmv?.toString(),
+    openCollabNew: body.open_collab_new,
+    dmOutreachNew: body.dm_outreach_new,
+    mcnNew: body.mcn_new,
+    buyerToCreatorNew: body.buyer_to_creator_new,
+    referralNew: body.referral_new,
+    paidNew: body.paid_new,
+    discordNew: body.discord_new ?? 0,
+    dmResponseRate: body.dm_response_rate?.toString(),
+    samplePostRate: body.sample_post_rate?.toString(),
+    sampleShipped: body.sample_shipped,
+    weeksTo30k: body.weeks_to_30k?.toString(),
+    tierBreakdown: body.tier_breakdown,
+    notes: body.notes,
+  }).returning();
 
-  if (error) {
-    console.error('[KPI POST] Database error:', error.message);
-    return NextResponse.json({ error: 'Failed to insert KPI data' }, { status: 500 });
-  }
-
-  return NextResponse.json({ data }, { status: 201 });
+  return NextResponse.json({ data: kpi }, { status: 201 });
 }
 
-// Dashboard summary endpoint
-export async function PUT(request: NextRequest) {
-  const { authorized } = await verifyAdmin(request);
-  if (!authorized) {
-    return NextResponse.json({ error: 'Forbidden: admin access required' }, { status: 403 });
-  }
+/**
+ * PUT /api/kpi — Dashboard summary (aggregated from DB)
+ */
+export async function PUT() {
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
 
-  const supabase = createServerClient();
-
-  // UNI-002: Use DB-level aggregation RPC instead of loading all creators into memory
-  const [summary, latestKpi] = await Promise.all([
-    supabase.rpc('get_dashboard_summary'),
-    supabase.from('weekly_kpis').select('*').order('week_number', { ascending: false }).limit(1).single(),
+  const [
+    [totalCreators],
+    [activeCreators],
+    tierBreakdown,
+    sourceBreakdown,
+    [pendingSamples],
+    [outreachCount],
+    latestKpi,
+  ] = await Promise.all([
+    db.select({ count: count() }).from(creators),
+    db.select({ count: count() }).from(creators).where(eq(creators.status, 'active')),
+    db.select({ tier: creators.tier, count: count() }).from(creators).groupBy(creators.tier),
+    db.select({ source: creators.source, count: count() }).from(creators).groupBy(creators.source),
+    db.select({ count: count() }).from(sampleShipments).where(eq(sampleShipments.status, 'requested')),
+    db.select({ count: count() }).from(outreachPipeline),
+    db.select().from(weeklyKpis).orderBy(desc(weeklyKpis.weekStarting)).limit(1),
   ]);
 
-  if (summary.error) {
-    console.error('[KPI PUT] Summary RPC error:', summary.error.message);
-    return NextResponse.json({ error: 'Failed to compute dashboard summary' }, { status: 500 });
-  }
-
-  // BUG-2: Proper null handling for latestKpi
-  const kpi = latestKpi.data;
-  if (latestKpi.error && latestKpi.error.code !== 'PGRST116') {
-    console.error('[KPI PUT] Failed to fetch latest KPI:', latestKpi.error.message);
-  }
-
-  const data = summary.data;
+  const kpi = latestKpi[0];
+  const totalGmv = await db.select({ sum: sql<string>`COALESCE(SUM(${creators.totalGmv}::numeric), 0)` }).from(creators);
 
   return NextResponse.json({
-    totalCreators: data.totalCreators,
-    activeCreators: data.activeCreators,
-    weeklyNetIncrease: kpi?.weekly_net_increase ?? 0,
-    weeksTo30K: kpi?.weeks_to_30k ?? 0,
-    totalGMV: data.totalGMV,
-    monthlyGMV: kpi?.monthly_gmv ?? 0,
-    pendingSamples: data.pendingSamples,
-    samplePostRate: kpi?.sample_post_rate ?? 0,
-    outreachPipelineCount: data.outreachPipelineCount,
-    dmResponseRate: kpi?.dm_response_rate ?? 0,
-    tierBreakdown: data.tierBreakdown,
-    sourceBreakdown: data.sourceBreakdown,
+    totalCreators: totalCreators?.count ?? 0,
+    activeCreators: activeCreators?.count ?? 0,
+    weeklyNetIncrease: kpi?.netIncrease ?? 0,
+    weeksTo30K: kpi?.weeksTo30k ?? null,
+    totalGMV: parseFloat(totalGmv[0]?.sum ?? '0'),
+    monthlyGMV: kpi?.monthlyGmv ?? 0,
+    pendingSamples: pendingSamples?.count ?? 0,
+    samplePostRate: kpi?.samplePostRate ?? 0,
+    outreachPipelineCount: outreachCount?.count ?? 0,
+    dmResponseRate: kpi?.dmResponseRate ?? 0,
+    tierBreakdown: Object.fromEntries(tierBreakdown.map((t) => [t.tier, t.count])),
+    sourceBreakdown: Object.fromEntries(sourceBreakdown.filter((s) => s.source).map((s) => [s.source!, s.count])),
   });
 }

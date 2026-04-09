@@ -1,82 +1,95 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerClient } from '@/lib/supabase';
-import { clampPagination, pickFields } from '@/lib/api';
+import { db } from '@/db';
+import { sampleShipments } from '@/db/schema/samples';
+import { creators } from '@/db/schema/creators';
+import { verifyAdmin } from '@/lib/auth';
+import { eq, desc, count, and } from 'drizzle-orm';
 
 const samplePatchSchema = z.object({
-  status: z.enum(['requested', 'approved', 'shipped', 'delivered', 'content_posted', 'rejected', 'returned']).optional(),
+  status: z.enum([
+    'requested', 'approved', 'shipped', 'delivered',
+    'reminder_1', 'reminder_2', 'content_posted', 'no_response',
+  ]).optional(),
   tracking_number: z.string().max(100).optional(),
   carrier: z.string().max(50).optional(),
   notes: z.string().max(2000).optional(),
-  shipped_at: z.string().datetime().optional(),
-  delivered_at: z.string().datetime().optional(),
+  content_url: z.string().url().optional(),
+  set_type: z.string().optional(),
 }).strict();
 
-// Whitelist allowed update fields for PATCH (VULN-005)
-const ALLOWED_PATCH_FIELDS = [
-  'status', 'tracking_number', 'carrier', 'shipped_at', 'delivered_at',
-  'content_url', 'content_posted_at', 'notes', 'set_type', 'updated_at',
+const ALLOWED_FIELDS = [
+  'status', 'trackingNumber', 'carrier', 'shippedAt', 'deliveredAt',
+  'contentUrl', 'contentPostedAt', 'notes', 'setType',
 ] as const;
 
-function pickPatchFields(body: Record<string, any>): Record<string, any> {
-  const cleaned = pickFields<any>(body, ALLOWED_PATCH_FIELDS);
-  cleaned.updated_at = new Date().toISOString();
-  return cleaned;
-}
-
 export async function GET(request: NextRequest) {
-  const supabase = createServerClient();
-  const { searchParams } = new URL(request.url);
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
 
+  const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
-  const set_type = searchParams.get('set_type');
-  const rawPage = parseInt(searchParams.get('page') || '1');
-  const rawLimit = parseInt(searchParams.get('limit') || '20');
-  const { page, limit } = clampPagination(rawPage, rawLimit);
+  const setType = searchParams.get('set_type');
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20')));
   const offset = (page - 1) * limit;
 
-  let query = supabase
-    .from('sample_shipments')
-    .select('*, creator:creators(tiktok_handle, display_name)', { count: 'exact' });
+  const conditions = [];
+  if (status) conditions.push(eq(sampleShipments.status, status as typeof sampleShipments.status.enumValues[number]));
+  if (setType) conditions.push(eq(sampleShipments.setType, setType as typeof sampleShipments.setType.enumValues[number]));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  if (status) query = query.eq('status', status);
-  if (set_type) query = query.eq('set_type', set_type);
-
-  const { data, error, count } = await query
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (error) {
-    console.error('GET /api/samples error:', error);
-    return NextResponse.json({ error: 'Failed to fetch samples' }, { status: 500 });
-  }
+  const [data, [totalResult]] = await Promise.all([
+    db
+      .select({
+        shipment: sampleShipments,
+        creatorHandle: creators.tiktokHandle,
+        creatorName: creators.displayName,
+      })
+      .from(sampleShipments)
+      .leftJoin(creators, eq(sampleShipments.creatorId, creators.id))
+      .where(where)
+      .orderBy(desc(sampleShipments.createdAt))
+      .limit(limit)
+      .offset(offset),
+    db.select({ count: count() }).from(sampleShipments).where(where),
+  ]);
 
   return NextResponse.json({
-    data,
-    pagination: { page, limit, total: count || 0 },
+    data: data.map((d) => ({
+      ...d.shipment,
+      creator: { tiktok_handle: d.creatorHandle, display_name: d.creatorName },
+    })),
+    pagination: { page, limit, total: totalResult?.count ?? 0 },
   });
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createServerClient();
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
+
   const body = await request.json();
 
-  const { data, error } = await supabase
-    .from('sample_shipments')
-    .insert(body)
-    .select()
-    .single();
+  const [shipment] = await db
+    .insert(sampleShipments)
+    .values({
+      creatorId: body.creator_id ?? body.creatorId,
+      setType: body.set_type ?? body.setType,
+      status: 'requested',
+      skuList: body.sku_list ?? body.skuList ?? [],
+      estimatedCost: body.estimated_cost ?? body.estimatedCost,
+      shippingCost: body.shipping_cost ?? body.shippingCost,
+      notes: body.notes,
+    })
+    .returning();
 
-  if (error) {
-    console.error('POST /api/samples error:', error);
-    return NextResponse.json({ error: 'Failed to create sample shipment' }, { status: 500 });
-  }
-
-  return NextResponse.json({ data }, { status: 201 });
+  return NextResponse.json({ data: shipment }, { status: 201 });
 }
 
 export async function PATCH(request: NextRequest) {
-  const supabase = createServerClient();
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
+
   const body = await request.json();
   const { id, ...rawUpdates } = body;
 
@@ -84,29 +97,32 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: 'ID required' }, { status: 400 });
   }
 
-  // Validate PATCH body
-  const validationResult = samplePatchSchema.safeParse(rawUpdates);
-  if (!validationResult.success) {
+  const validation = samplePatchSchema.safeParse(rawUpdates);
+  if (!validation.success) {
     return NextResponse.json(
-      { error: 'Validation failed', details: validationResult.error.errors },
-      { status: 400 }
+      { error: 'Validation failed', details: validation.error.errors },
+      { status: 400 },
     );
   }
 
-  // Whitelist allowed fields (VULN-005)
-  const updates = pickPatchFields(rawUpdates);
+  // Map snake_case → camelCase for Drizzle
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (rawUpdates.status) updates.status = rawUpdates.status;
+  if (rawUpdates.tracking_number) updates.trackingNumber = rawUpdates.tracking_number;
+  if (rawUpdates.carrier) updates.carrier = rawUpdates.carrier;
+  if (rawUpdates.notes !== undefined) updates.notes = rawUpdates.notes;
+  if (rawUpdates.content_url) updates.contentUrl = rawUpdates.content_url;
+  if (rawUpdates.set_type) updates.setType = rawUpdates.set_type;
 
-  const { data, error } = await supabase
-    .from('sample_shipments')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
+  const [updated] = await db
+    .update(sampleShipments)
+    .set(updates)
+    .where(eq(sampleShipments.id, id))
+    .returning();
 
-  if (error) {
-    console.error('PATCH /api/samples error:', error);
-    return NextResponse.json({ error: 'Failed to update sample shipment' }, { status: 500 });
+  if (!updated) {
+    return NextResponse.json({ error: 'Sample not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: updated });
 }

@@ -1,145 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createServerClient } from '@/lib/supabase';
-import { clampPagination, pickFields } from '@/lib/api';
+import { db } from '@/db';
+import { outreachPipeline } from '@/db/schema/outreach';
+import { verifyAdmin } from '@/lib/auth';
+import { eq, desc, and, count, ilike } from 'drizzle-orm';
 
 const outreachPatchSchema = z.object({
-  status: z.enum(['discovered', 'contacted', 'responded', 'negotiating', 'onboarded', 'rejected', 'converted']).optional(),
+  status: z.enum(['identified', 'dm_sent', 'responded', 'sample_requested', 'converted', 'declined', 'no_response']).optional(),
+  outreach_tier: z.enum(['tier_a', 'tier_b']).optional(),
   notes: z.string().max(2000).optional(),
-  last_contacted_at: z.string().datetime().optional(),
-  assigned_to: z.string().uuid().optional(),
+  email: z.string().email().optional(),
+  instagram_handle: z.string().optional(),
 }).strict();
 
-// Whitelist allowed update fields for PATCH
-const ALLOWED_PATCH_FIELDS = [
-  'status', 'outreach_tier', 'notes', 'dm_sent_at', 'response_at',
-  'follow_up_at', 'email', 'instagram_handle', 'updated_at',
-] as const;
-
-function pickPatchFields(body: Record<string, any>): Record<string, any> {
-  const cleaned = pickFields<any>(body, ALLOWED_PATCH_FIELDS);
-  cleaned.updated_at = new Date().toISOString();
-  return cleaned;
-}
-
 export async function GET(request: NextRequest) {
-  const supabase = createServerClient();
-  const { searchParams } = new URL(request.url);
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
 
+  const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
   const tier = searchParams.get('tier');
-  const competitor = searchParams.get('competitor');
-  const rawPage = parseInt(searchParams.get('page') || '1');
-  const rawLimit = parseInt(searchParams.get('limit') || '20');
-  const { page, limit } = clampPagination(rawPage, rawLimit);
+  const search = searchParams.get('search')?.slice(0, 100);
+  const page = Math.max(1, parseInt(searchParams.get('page') ?? '1'));
+  const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') ?? '20')));
   const offset = (page - 1) * limit;
 
-  let query = supabase
-    .from('outreach_pipeline')
-    .select('*', { count: 'exact' });
+  const conditions = [];
+  if (status) conditions.push(eq(outreachPipeline.status, status as typeof outreachPipeline.status.enumValues[number]));
+  if (tier) conditions.push(eq(outreachPipeline.outreachTier, tier as typeof outreachPipeline.outreachTier.enumValues[number]));
+  if (search) conditions.push(ilike(outreachPipeline.tiktokHandle, `%${search.replace(/[\\%_]/g, '')}%`));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
 
-  if (status) query = query.eq('status', status);
-  if (tier) query = query.eq('outreach_tier', tier);
-  if (competitor) query = query.eq('source_competitor', competitor);
+  const [data, [totalResult]] = await Promise.all([
+    db.select().from(outreachPipeline).where(where).orderBy(desc(outreachPipeline.createdAt)).limit(limit).offset(offset),
+    db.select({ count: count() }).from(outreachPipeline).where(where),
+  ]);
 
-  const { data, error, count } = await query
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
-
-  if (error) {
-    console.error('GET /api/outreach error:', error);
-    return NextResponse.json({ error: 'Failed to fetch outreach' }, { status: 500 });
-  }
-
-  return NextResponse.json({
-    data,
-    pagination: { page, limit, total: count || 0 },
-  });
+  return NextResponse.json({ data, pagination: { page, limit, total: totalResult?.count ?? 0 } });
 }
 
 export async function POST(request: NextRequest) {
-  const supabase = createServerClient();
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
   const body = await request.json();
 
-  const { data, error } = await supabase
-    .from('outreach_pipeline')
-    .insert(body)
-    .select()
-    .single();
+  const [entry] = await db.insert(outreachPipeline).values({
+    tiktokHandle: body.tiktok_handle ?? body.tiktokHandle,
+    displayName: body.display_name ?? body.displayName,
+    email: body.email,
+    instagramHandle: body.instagram_handle ?? body.instagramHandle,
+    followerCount: body.follower_count ?? body.followerCount,
+    outreachTier: body.outreach_tier ?? body.outreachTier,
+    channel: body.channel,
+    sourceBrand: body.source_brand ?? body.sourceBrand,
+    notes: body.notes,
+  }).returning();
 
-  if (error) {
-    console.error('POST /api/outreach error:', error);
-    return NextResponse.json({ error: 'Failed to create outreach entry' }, { status: 500 });
-  }
-
-  return NextResponse.json({ data }, { status: 201 });
+  return NextResponse.json({ data: entry }, { status: 201 });
 }
 
 export async function PATCH(request: NextRequest) {
-  const supabase = createServerClient();
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
   const body = await request.json();
   const { id, ...rawUpdates } = body;
+  if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
-  if (!id) {
-    return NextResponse.json({ error: 'ID required' }, { status: 400 });
-  }
+  const validation = outreachPatchSchema.safeParse(rawUpdates);
+  if (!validation.success) return NextResponse.json({ error: 'Validation failed', details: validation.error.errors }, { status: 400 });
 
-  // Validate PATCH body
-  const validationResult = outreachPatchSchema.safeParse(rawUpdates);
-  if (!validationResult.success) {
-    return NextResponse.json(
-      { error: 'Validation failed', details: validationResult.error.errors },
-      { status: 400 }
-    );
-  }
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  if (rawUpdates.status) updates.status = rawUpdates.status;
+  if (rawUpdates.outreach_tier) updates.outreachTier = rawUpdates.outreach_tier;
+  if (rawUpdates.notes !== undefined) updates.notes = rawUpdates.notes;
+  if (rawUpdates.email) updates.email = rawUpdates.email;
+  if (rawUpdates.instagram_handle) updates.instagramHandle = rawUpdates.instagram_handle;
 
-  // If converting to "converted", also create a creator record
-  if (rawUpdates.status === 'converted') {
-    const { data: existing } = await supabase
-      .from('outreach_pipeline')
-      .select('*')
-      .eq('id', id)
-      .single();
+  const [updated] = await db.update(outreachPipeline).set(updates).where(eq(outreachPipeline.id, id)).returning();
+  if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-    if (existing) {
-      const { data: creator } = await supabase
-        .from('creators')
-        .insert({
-          tiktok_handle: existing.tiktok_handle,
-          display_name: existing.display_name,
-          email: existing.email,
-          instagram_handle: existing.instagram_handle,
-          source: 'dm_outreach',
-          status: 'pending',
-          follower_count: existing.follower_count,
-          competitor_brands: existing.source_competitor ? [existing.source_competitor] : [],
-        })
-        .select()
-        .single();
-
-      if (creator) {
-        rawUpdates.creator_id = creator.id;
-        rawUpdates.converted_at = new Date().toISOString();
-      }
-    }
-  }
-
-  // Whitelist allowed fields for non-conversion updates
-  const updates = rawUpdates.status === 'converted'
-    ? { ...pickPatchFields(rawUpdates), creator_id: rawUpdates.creator_id, converted_at: rawUpdates.converted_at }
-    : pickPatchFields(rawUpdates);
-
-  const { data, error } = await supabase
-    .from('outreach_pipeline')
-    .update(updates)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) {
-    console.error('PATCH /api/outreach error:', error);
-    return NextResponse.json({ error: 'Failed to update outreach entry' }, { status: 500 });
-  }
-
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: updated });
 }

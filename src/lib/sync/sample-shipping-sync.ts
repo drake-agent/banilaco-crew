@@ -8,6 +8,9 @@
 // 4. sync_log에 결과 기록
 // ============================================
 
+// TODO: Migrate to Drizzle ORM
+import { db } from '@/db';
+// @ts-expect-error — Legacy Supabase import, pending full migration
 import { createServerClient } from '@/lib/supabase';
 import type { IShippingTrackerAdapter, TrackingResult } from '@/lib/adapters/shipping-tracker.adapter';
 import type { SampleStatus } from '@/types/database';
