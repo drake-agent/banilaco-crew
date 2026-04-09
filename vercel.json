@@ -35,6 +35,11 @@
       "path": "/api/squad?action=calculate_bonuses",
       "schedule": "0 17 1 * *",
       "comment": "Squad bonus calculation monthly 1st (KST 2AM)"
+    },
+    {
+      "path": "/api/distiller",
+      "schedule": "0 17 * * *",
+      "comment": "Nightly knowledge distiller (KST 2AM)"
     }
   ]
 }

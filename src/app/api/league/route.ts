@@ -2,15 +2,35 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { pinkLeagueSeasons, pinkLeagueEntries, pinkLeagueDailySnapshots } from '@/db/schema/league';
 import { creators, TIER_CONFIG, type PinkTier } from '@/db/schema/creators';
-import { verifyAuth, verifyAdmin } from '@/lib/auth';
+import { verifyAuth, verifyAdmin, verifyCronAuth } from '@/lib/auth';
 import { takeDailySnapshot, autoRegisterEligible } from '@/lib/league/scoring';
 import { eq, desc, sql, and } from 'drizzle-orm';
 
 /**
- * GET /api/league — Current season + rankings
+ * GET /api/league — Current season + rankings (public)
+ * Also handles Cron: GET /api/league?action=daily_snapshot
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
+  const action = searchParams.get('action');
+
+  // Cron handler: daily_snapshot (FIX: ARCH-2/CFG-1)
+  if (action === 'daily_snapshot') {
+    if (!verifyCronAuth(request)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    const [activeSeason] = await db
+      .select()
+      .from(pinkLeagueSeasons)
+      .where(eq(pinkLeagueSeasons.status, 'active'))
+      .limit(1);
+    if (!activeSeason) {
+      return NextResponse.json({ message: 'No active season' });
+    }
+    const result = await takeDailySnapshot(activeSeason.id);
+    return NextResponse.json({ cron: 'daily_snapshot', ...result });
+  }
+
   const limit = Math.min(100, parseInt(searchParams.get('limit') ?? '10'));
 
   // Get active or most recent season

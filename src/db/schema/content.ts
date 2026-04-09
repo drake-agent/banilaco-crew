@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, integer, decimal, boolean, timestamp, jsonb,
+  pgTable, uuid, text, integer, decimal, boolean, timestamp, jsonb, index, unique,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { creators } from './creators';
@@ -26,7 +26,11 @@ export const contentTracking = pgTable('content_tracking', {
   shipmentId: uuid('shipment_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  // FIX PERF-6: indexes for common query patterns
+  creatorPostedIdx: index('idx_content_creator_posted').on(table.creatorId, table.postedAt),
+  videoIdUnique: unique('uq_content_video_id').on(table.videoId),
+}));
 
 export const contentRelations = relations(contentTracking, ({ one }) => ({
   creator: one(creators, {

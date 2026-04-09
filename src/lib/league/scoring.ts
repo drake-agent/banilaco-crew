@@ -153,9 +153,9 @@ export async function takeDailySnapshot(seasonId: string): Promise<{
       set: { rank, pinkScore: boostedScore.toString(), boostMultiplier: boostMultiplier.toString() },
     });
 
-    // Also update creator's pink_score
+    // FIX BUG-5: Store RAW score on creator, not boosted (prevents 33% swings)
     await db.update(creators).set({
-      pinkScore: boostedScore.toString(),
+      pinkScore: score.totalPinkScore.toString(),
       updatedAt: new Date(),
     }).where(eq(creators.id, creatorId));
   }

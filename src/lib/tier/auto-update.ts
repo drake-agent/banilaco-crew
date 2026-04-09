@@ -23,6 +23,8 @@ export function calculateTier(
   current: PinkTier,
   input: TierInput,
 ): TierResult {
+  const TIER_ORDER: PinkTier[] = ['pink_petal', 'pink_rose', 'pink_diamond', 'pink_crown'];
+
   let tier: PinkTier;
 
   if (input.missionCount >= 200 || input.monthlyGmv >= 2500) {
@@ -31,6 +33,11 @@ export function calculateTier(
     tier = 'pink_rose';
   } else {
     tier = 'pink_petal';
+  }
+
+  // FIX BUG-2: Never auto-downgrade. Demotion requires admin action.
+  if (TIER_ORDER.indexOf(tier) < TIER_ORDER.indexOf(current)) {
+    tier = current;
   }
 
   const config = TIER_CONFIG[tier];

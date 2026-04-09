@@ -30,12 +30,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async jwt({ token, user, account }) {
       if (user) {
         token.userId = user.id;
+      }
 
-        // Check admin role
+      // FIX SEC-6: Always refresh role from DB (not just at login)
+      // This ensures admin demotion takes effect immediately
+      if (token.userId) {
         const dbUser = await db
           .select({ role: users.role })
           .from(users)
-          .where(eq(users.id, user.id!))
+          .where(eq(users.id, token.userId as string))
           .limit(1);
 
         token.role = dbUser[0]?.role ?? 'user';

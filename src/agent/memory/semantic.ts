@@ -19,18 +19,23 @@ export async function searchSemantic(
   pools: string[] = ['squad'],
   limit = 5,
 ): Promise<Array<typeof semanticMemory.$inferSelect>> {
-  // Extract keywords (basic — can upgrade to NLP)
+  // Escape LIKE metacharacters to prevent wildcard injection (FIX: SEC-2)
+  function escapeLike(str: string): string {
+    return str.replace(/[%_\\]/g, '\\$&');
+  }
+
+  // Extract keywords — only alphanumeric + Korean chars (filter out special chars)
   const keywords = query
     .toLowerCase()
     .split(/\s+/)
-    .filter((w) => w.length > 2)
+    .filter((w) => w.length > 2 && /^[a-z0-9가-힣]+$/i.test(w))
     .slice(0, 5);
 
   if (keywords.length === 0) return [];
 
-  // Build OR conditions for keyword matching
+  // Build OR conditions for keyword matching (escaped)
   const keywordConditions = keywords.map((kw) =>
-    ilike(semanticMemory.content, `%${kw}%`),
+    ilike(semanticMemory.content, `%${escapeLike(kw)}%`),
   );
 
   const poolConditions = pools.map((p) =>

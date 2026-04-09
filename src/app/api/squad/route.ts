@@ -6,8 +6,25 @@ const engine = new SquadEngine();
 
 /**
  * GET /api/squad — Creator's squad info + members
+ * Also handles Cron: GET /api/squad?action=calculate_bonuses (FIX: ARCH-2/CFG-2)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const action = searchParams.get('action');
+
+  // Cron handler: monthly bonus calculation
+  if (action === 'calculate_bonuses') {
+    if (!verifyCronAuth(request)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    // Auto-compute period: previous month
+    const now = new Date();
+    const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const period = `${prevMonth.getFullYear()}-${String(prevMonth.getMonth() + 1).padStart(2, '0')}`;
+    const result = await engine.calculateSquadBonuses(period);
+    return NextResponse.json({ cron: 'calculate_bonuses', period, ...result });
+  }
+
   const result = await getCreatorFromAuth();
   if (result.error) return result.error;
 

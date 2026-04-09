@@ -56,6 +56,7 @@ export const config = {
     '/api/kpi/:path*',
     '/api/creator/:path*',
     '/api/referrals/:path*',
+    '/api/payouts/:path*',
     '/api/reminders/:path*',
     '/api/missions/:path*',
     '/api/league/:path*',

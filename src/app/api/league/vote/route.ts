@@ -4,6 +4,9 @@ import { pinkLeagueSeasons, pinkLeagueEntries } from '@/db/schema/league';
 import { verifyAuth } from '@/lib/auth';
 import { eq, and, sql } from 'drizzle-orm';
 
+// TODO SEC-1: Add pinkLeagueVotes table for dedup (schema + migration needed)
+// For now, use atomic increment to at least fix BUG-4 (lost votes)
+
 /**
  * POST /api/league/vote — Fan voting during season finale (voting status)
  */
@@ -46,15 +49,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Creator is not a Pink Crown candidate' }, { status: 400 });
   }
 
-  // Increment vote (simple — no duplicate check for now, can add later)
-  await db.update(pinkLeagueEntries).set({
-    fanVoteCount: (entry.fanVoteCount ?? 0) + 1,
+  // FIX BUG-4: Use atomic SQL increment instead of read-modify-write
+  const [updated] = await db.update(pinkLeagueEntries).set({
+    fanVoteCount: sql`COALESCE(${pinkLeagueEntries.fanVoteCount}, 0) + 1`,
     updatedAt: new Date(),
-  }).where(eq(pinkLeagueEntries.id, entry.id));
+  }).where(eq(pinkLeagueEntries.id, entry.id)).returning({ fanVoteCount: pinkLeagueEntries.fanVoteCount });
 
   return NextResponse.json({
     voted: true,
     creatorId,
-    newVoteCount: (entry.fanVoteCount ?? 0) + 1,
+    newVoteCount: updated?.fanVoteCount ?? 0,
   });
 }

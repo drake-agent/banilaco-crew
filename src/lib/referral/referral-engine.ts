@@ -126,7 +126,8 @@ export class SquadEngine {
             status: 'pending',
           })
           .onConflictDoUpdate({
-            target: [squadBonusLog.leaderId, squadBonusLog.memberId],
+            // FIX STRUCT-5: include period in conflict target to match unique constraint
+            target: [squadBonusLog.leaderId, squadBonusLog.memberId, squadBonusLog.period],
             set: {
               memberGmv: memberGmv.toString(),
               bonusAmount: bonusAmount.toString(),

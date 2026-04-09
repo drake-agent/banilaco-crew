@@ -32,13 +32,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   }
 
-  // Log event
-  await db.insert(webhookEvents).values({
+  // Log event (FIX BUG-3: capture ID for targeted status update)
+  const [event] = await db.insert(webhookEvents).values({
     eventType: String(payload.type),
     shopId: payload.shop_id,
     payload: payload as Record<string, unknown>,
     processingStatus: 'pending',
-  });
+  }).returning();
 
   // Process event
   try {
@@ -47,18 +47,14 @@ export async function POST(request: NextRequest) {
     await db.update(webhookEvents).set({
       processingStatus: 'processed',
       processedAt: new Date(),
-    }).where(
-      eq(webhookEvents.eventType, String(payload.type)),
-    );
+    }).where(eq(webhookEvents.id, event.id));
   } catch (err) {
     console.error(`Webhook processing failed for type=${payload.type}:`, err);
     await db.update(webhookEvents).set({
       processingStatus: 'failed',
       errorMessage: err instanceof Error ? err.message : 'Unknown error',
       processedAt: new Date(),
-    }).where(
-      eq(webhookEvents.eventType, String(payload.type)),
-    );
+    }).where(eq(webhookEvents.id, event.id));
   }
 
   return NextResponse.json({ success: true });
