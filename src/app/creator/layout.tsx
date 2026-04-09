@@ -6,6 +6,7 @@ import Link from 'next/link';
 const navItems = [
   { href: '/creator', label: 'Dashboard', icon: '📊' },
   { href: '/creator/missions', label: 'Missions', icon: '🎯' },
+  { href: '/creator/recipes', label: 'Content Recipes', icon: '📝' },
   { href: '/creator/improve', label: 'How to Improve', icon: '💡' },
   { href: '/creator/content', label: 'My Content', icon: '🎬' },
   { href: '/creator/earnings', label: 'Earnings', icon: '💰' },

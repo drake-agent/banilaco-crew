@@ -41,6 +41,15 @@ export const creators = pgTable('creators', {
   aiProfileCompleted: boolean('ai_profile_completed').default(false),
   flatFeeEarned: decimal('flat_fee_earned', { precision: 10, scale: 2 }).default('0'),
 
+  // Streak System
+  currentStreak: integer('current_streak').default(0).notNull(),
+  longestStreak: integer('longest_streak').default(0).notNull(),
+  lastMissionDate: text('last_mission_date'), // YYYY-MM-DD for easy comparison
+
+  // Onboarding
+  onboardingStep: integer('onboarding_step').default(0).notNull(), // 0-5 checklist progress
+  squadCode: text('squad_code'), // personal squad invite code (e.g. "MIASQUAD")
+
   // Squad System
   squadLeaderId: uuid('squad_leader_id'), // self-referencing FK handled via relations
   squadBonusRate: decimal('squad_bonus_rate', { precision: 5, scale: 4 }).default('0'),

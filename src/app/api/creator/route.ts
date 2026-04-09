@@ -2,8 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { creators, TIER_CONFIG, type PinkTier } from '@/db/schema/creators';
 import { contentTracking } from '@/db/schema/content';
+import { discordLinks } from '@/db/schema/discord';
 import { missionCompletions } from '@/db/schema/missions';
 import { getCreatorFromAuth } from '@/lib/auth';
+import { getStreakMultiplier, getCurrentMilestone, getNextMilestone } from '@/lib/streak/streak-engine';
 import { eq, desc, sql, gte, count } from 'drizzle-orm';
 
 /**
@@ -79,6 +81,44 @@ export async function GET() {
     }
   }
 
+  // Streak info
+  const streakDays = creator.currentStreak ?? 0;
+  const streak = {
+    current: streakDays,
+    longest: creator.longestStreak ?? 0,
+    multiplier: getStreakMultiplier(streakDays),
+    currentMilestone: getCurrentMilestone(streakDays),
+    nextMilestone: getNextMilestone(streakDays),
+    lastMissionDate: creator.lastMissionDate ?? null,
+  };
+
+  // Onboarding checklist
+  const [discordLink] = await db
+    .select({ id: discordLinks.id })
+    .from(discordLinks)
+    .where(eq(discordLinks.creatorId, creator.id))
+    .limit(1);
+
+  const hasDiscord = !!discordLink;
+  const hasTiktok = !!creator.tiktokHandle;
+  const hasAiProfile = creator.aiProfileCompleted ?? false;
+  const hasFirstMission = (creator.missionCount ?? 0) > 0;
+  const hasFirstContent = (creator.totalContentCount ?? 0) > 0;
+
+  const onboarding = {
+    step: creator.onboardingStep ?? 0,
+    checklist: [
+      { key: 'discord', label: 'Connect Discord', done: hasDiscord, icon: '💬' },
+      { key: 'tiktok', label: 'Link TikTok Account', done: hasTiktok, icon: '🎵' },
+      { key: 'profile', label: 'Complete AI Profile', done: hasAiProfile, icon: '🤖' },
+      { key: 'mission', label: 'Complete First Mission', done: hasFirstMission, icon: '🎯' },
+      { key: 'content', label: 'Post First Content', done: hasFirstContent, icon: '🎬' },
+    ],
+    completedCount: [hasDiscord, hasTiktok, hasAiProfile, hasFirstMission, hasFirstContent].filter(Boolean).length,
+    totalCount: 5,
+    isComplete: hasDiscord && hasTiktok && hasAiProfile && hasFirstMission && hasFirstContent,
+  };
+
   return NextResponse.json({
     creator: {
       id: creator.id,
@@ -97,6 +137,7 @@ export async function GET() {
       followerCount: creator.followerCount ?? 0,
       avgViews: creator.avgViews ?? 0,
       engagementRate: parseFloat(creator.engagementRate ?? '0'),
+      squadCode: creator.squadCode ?? null,
     },
     stats: {
       totalViews,
@@ -105,6 +146,8 @@ export async function GET() {
       contentCount: recentContent.length,
       monthlyMissions: monthlyMissions?.count ?? 0,
     },
+    streak,
+    onboarding,
     tierProgress,
   });
 }

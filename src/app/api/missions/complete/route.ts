@@ -4,6 +4,7 @@ import { missions, missionCompletions } from '@/db/schema/missions';
 import { creators } from '@/db/schema/creators';
 import { getCreatorFromAuth } from '@/lib/auth';
 import { calculateTier } from '@/lib/tier/auto-update';
+import { calculateStreak, getStreakMultiplier } from '@/lib/streak/streak-engine';
 import { eq, and, gte, lte, sql } from 'drizzle-orm';
 
 /**
@@ -80,10 +81,22 @@ export async function POST(request: Request) {
     );
   }
 
-  const rewardAmount = parseFloat(mission.rewardAmount ?? '0');
-  const scoreAmount = mission.scoreAmount ?? 0;
+  // 4. Calculate streak
+  const todayStr = today; // YYYY-MM-DD
+  const streakResult = calculateStreak(
+    creatorResult.creator.currentStreak ?? 0,
+    creatorResult.creator.longestStreak ?? 0,
+    creatorResult.creator.lastMissionDate ?? null,
+    todayStr,
+  );
 
-  // 4. Insert completion
+  // Apply streak multiplier to rewards
+  const baseReward = parseFloat(mission.rewardAmount ?? '0');
+  const baseScore = mission.scoreAmount ?? 0;
+  const rewardAmount = Math.round(baseReward * streakResult.multiplier * 100) / 100;
+  const scoreAmount = Math.round(baseScore * streakResult.multiplier);
+
+  // 5. Insert completion
   const [completion] = await db
     .insert(missionCompletions)
     .values({
@@ -96,17 +109,21 @@ export async function POST(request: Request) {
     })
     .returning();
 
-  // 5. Update creator metrics
+  // 6. Update creator metrics (with streak)
   const newMissionCount = (creatorResult.creator.missionCount ?? 0) + 1;
   const newFlatFee = parseFloat(creatorResult.creator.flatFeeEarned ?? '0') + rewardAmount;
   const newPinkScore = parseFloat(creatorResult.creator.pinkScore ?? '0') + scoreAmount;
 
-  // 6. Calculate new tier
+  // 7. Calculate new tier
   const tierResult = calculateTier(creatorResult.creator.tier, {
     missionCount: newMissionCount,
     monthlyGmv: parseFloat(creatorResult.creator.monthlyGmv ?? '0'),
     aiProfileCompleted: creatorResult.creator.aiProfileCompleted ?? false,
   });
+
+  // Update onboarding step if this is first mission
+  const currentOnboardingStep = creatorResult.creator.onboardingStep ?? 0;
+  const newOnboardingStep = currentOnboardingStep < 3 ? 3 : currentOnboardingStep;
 
   await db
     .update(creators)
@@ -117,6 +134,10 @@ export async function POST(request: Request) {
       tier: tierResult.tier,
       commissionRate: tierResult.commissionRate.toString(),
       squadBonusRate: tierResult.squadBonusRate.toString(),
+      currentStreak: streakResult.currentStreak,
+      longestStreak: streakResult.longestStreak,
+      lastMissionDate: streakResult.lastMissionDate,
+      onboardingStep: newOnboardingStep,
       ...(tierResult.changed ? { tierUpdatedAt: new Date() } : {}),
       updatedAt: new Date(),
     })
@@ -129,6 +150,15 @@ export async function POST(request: Request) {
       missionType: mission.missionType,
       rewardEarned: rewardAmount,
       scoreEarned: scoreAmount,
+      baseReward,
+      baseScore,
+    },
+    streak: {
+      current: streakResult.currentStreak,
+      longest: streakResult.longestStreak,
+      multiplier: streakResult.multiplier,
+      milestone: streakResult.milestone,
+      broken: streakResult.streakBroken,
     },
     creator: {
       missionCount: newMissionCount,

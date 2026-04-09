@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useApi, useMutation, LoadingSkeleton, ErrorBanner } from '@/hooks/use-api';
+import { StreakWidget } from '@/components/streak-widget';
 
 interface MissionData {
   id: string;
@@ -20,6 +21,34 @@ interface MissionsResponse {
   totalCount: number;
 }
 
+interface CompletionResult {
+  completion: {
+    id: string;
+    missionTitle: string;
+    missionType: string;
+    rewardEarned: number;
+    scoreEarned: number;
+    baseReward: number;
+    baseScore: number;
+  };
+  streak: {
+    current: number;
+    longest: number;
+    multiplier: number;
+    milestone: { days: number; label: string; emoji: string; multiplier: number } | null;
+    broken: boolean;
+  };
+  creator: {
+    missionCount: number;
+    flatFeeEarned: number;
+    pinkScore: number;
+    tier: string;
+    tierChanged: boolean;
+    previousTier?: string;
+    newTier?: string;
+  };
+}
+
 const MISSION_CONFIG = {
   learning: { emoji: '📚', label: 'Learning', color: 'bg-blue-50 border-blue-200 text-blue-700' },
   creation: { emoji: '🎬', label: 'Creation', color: 'bg-purple-50 border-purple-200 text-purple-700' },
@@ -27,11 +56,15 @@ const MISSION_CONFIG = {
 } as const;
 
 export default function MissionsPage() {
-  const { data, loading, error, refetch } = useApi<MissionsResponse>('/api/missions');
-  const { trigger: completeMission, loading: completing } = useMutation('/api/missions/complete', 'POST');
+  const { data, loading, error, refetch } = useApi<MissionsResponse>('missions');
+  const { mutate: completeMission, loading: completing } = useMutation<CompletionResult>('missions/complete', 'POST');
   const [completingId, setCompletingId] = useState<string | null>(null);
   const [proofUrl, setProofUrl] = useState('');
   const [showProofInput, setShowProofInput] = useState<string | null>(null);
+  const [celebration, setCelebration] = useState<CompletionResult | null>(null);
+
+  // Streak state (refreshed after completion)
+  const [streak, setStreak] = useState<CompletionResult['streak'] | null>(null);
 
   const handleComplete = async (missionId: string) => {
     setCompletingId(missionId);
@@ -41,10 +74,15 @@ export default function MissionsPage() {
         proofUrl: proofUrl || undefined,
       });
 
-      if (result?.creator?.tierChanged) {
-        // Show tier upgrade celebration
-        alert(`🎉 티어 승급! ${result.creator.previousTier} → ${result.creator.newTier}`);
+      if (!result) return;
+
+      // Update streak display
+      if (result.streak) {
+        setStreak(result.streak);
       }
+
+      // Show celebration modal
+      setCelebration(result);
 
       setProofUrl('');
       setShowProofInput(null);
@@ -56,6 +94,8 @@ export default function MissionsPage() {
     }
   };
 
+  const dismissCelebration = () => setCelebration(null);
+
   if (loading) return <LoadingSkeleton />;
   if (error) return <ErrorBanner message={error} />;
 
@@ -66,16 +106,34 @@ export default function MissionsPage() {
 
   return (
     <div className="p-8">
+      {/* Celebration Overlay */}
+      {celebration && (
+        <CelebrationModal result={celebration} onClose={dismissCelebration} />
+      )}
+
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">🌸 Daily Missions</h1>
-        <p className="text-gray-600 mt-2">
-          Complete missions to earn Flat Fee + Pink Score. Level up your tier!
-        </p>
+      <div className="flex items-start justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Daily Missions</h1>
+          <p className="text-gray-600 mt-2">
+            Complete missions to earn Flat Fee + Pink Score. Streak multipliers boost your rewards!
+          </p>
+        </div>
+        {/* Compact streak in header */}
+        {streak && (
+          <StreakWidget
+            current={streak.current}
+            longest={streak.longest}
+            multiplier={streak.multiplier}
+            currentMilestone={null}
+            nextMilestone={null}
+            compact
+          />
+        )}
       </div>
 
       {/* Progress Bar */}
-      <div className="card mb-8">
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-8">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-gray-900">Today&apos;s Progress</h2>
           <span className="text-sm font-bold text-pink-600">
@@ -89,9 +147,26 @@ export default function MissionsPage() {
           />
         </div>
         {allDone && (
-          <p className="text-green-600 font-semibold mt-3 text-center">
-            🎉 All missions completed today! Great work!
-          </p>
+          <div className="mt-4 bg-green-50 border border-green-200 rounded-lg p-4 text-center">
+            <p className="text-green-700 font-bold text-lg">
+              All missions completed today! Great work!
+            </p>
+            <p className="text-green-600 text-sm mt-1">
+              Come back tomorrow to keep your streak alive!
+            </p>
+          </div>
+        )}
+
+        {/* Streak multiplier hint */}
+        {streak && streak.multiplier > 1 && (
+          <div className="mt-3 flex items-center gap-2 text-sm">
+            <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full font-semibold">
+              🔥 {streak.multiplier}x Streak Bonus Active
+            </span>
+            <span className="text-gray-500">
+              All rewards are multiplied by your streak!
+            </span>
+          </div>
         )}
       </div>
 
@@ -109,11 +184,12 @@ export default function MissionsPage() {
             const reward = parseFloat(mission.rewardAmount ?? '0');
             const score = mission.scoreAmount ?? 0;
             const isCompleting = completingId === mission.id;
+            const multiplier = streak?.multiplier ?? 1;
 
             return (
               <div
                 key={mission.id}
-                className={`card border-2 ${
+                className={`bg-white rounded-xl border-2 shadow-sm p-6 ${
                   mission.completed
                     ? 'border-green-200 bg-green-50 opacity-75'
                     : 'border-gray-200 hover:border-pink-200'
@@ -136,8 +212,22 @@ export default function MissionsPage() {
                       <p className="text-gray-600 text-sm ml-12 mb-4">{mission.description}</p>
                     )}
                     <div className="flex gap-4 ml-12 text-sm">
-                      <span className="font-semibold text-pink-600">💰 +${reward} Flat Fee</span>
-                      <span className="font-semibold text-purple-600">⭐ +{score} Score</span>
+                      <span className="font-semibold text-pink-600">
+                        💰 +${reward} Flat Fee
+                        {multiplier > 1 && (
+                          <span className="text-orange-500 ml-1">
+                            (${(reward * multiplier).toFixed(2)} with streak)
+                          </span>
+                        )}
+                      </span>
+                      <span className="font-semibold text-purple-600">
+                        ⭐ +{score} Score
+                        {multiplier > 1 && (
+                          <span className="text-orange-500 ml-1">
+                            ({Math.round(score * multiplier)} with streak)
+                          </span>
+                        )}
+                      </span>
                     </div>
                   </div>
 
@@ -158,7 +248,7 @@ export default function MissionsPage() {
                             <button
                               onClick={() => handleComplete(mission.id)}
                               disabled={isCompleting}
-                              className="btn-primary text-sm"
+                              className="bg-pink-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-pink-600 disabled:opacity-50 transition-colors"
                             >
                               {isCompleting ? 'Submitting...' : 'Submit'}
                             </button>
@@ -166,7 +256,7 @@ export default function MissionsPage() {
                         ) : (
                           <button
                             onClick={() => setShowProofInput(mission.id)}
-                            className="btn-primary text-sm"
+                            className="bg-pink-500 text-white px-6 py-3 rounded-lg text-sm font-semibold hover:bg-pink-600 transition-colors"
                           >
                             Complete
                           </button>
@@ -181,5 +271,128 @@ export default function MissionsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Celebration Modal
+// ---------------------------------------------------------------------------
+
+function CelebrationModal({
+  result,
+  onClose,
+}: {
+  result: CompletionResult;
+  onClose: () => void;
+}) {
+  const { completion, streak, creator } = result;
+  const hasMultiplier = streak.multiplier > 1;
+  const hasMilestone = !!streak.milestone;
+  const hasTierUp = creator.tierChanged;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden animate-bounce-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="bg-linear-to-r from-pink-500 via-rose-500 to-purple-500 p-6 text-white text-center">
+          <p className="text-5xl mb-2">
+            {hasTierUp ? '🎉🏆🎉' : hasMilestone ? streak.milestone!.emoji : '✅'}
+          </p>
+          <h2 className="text-xl font-bold">
+            {hasTierUp
+              ? 'Tier Upgrade!'
+              : hasMilestone
+                ? `${streak.milestone!.label} Unlocked!`
+                : 'Mission Complete!'}
+          </h2>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-4">
+          {/* Mission info */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <p className="text-sm font-medium text-gray-600">{completion.missionTitle}</p>
+            <div className="flex gap-4 mt-2 text-sm">
+              <span className="font-bold text-pink-600">💰 +${completion.rewardEarned.toFixed(2)}</span>
+              <span className="font-bold text-purple-600">⭐ +{completion.scoreEarned}</span>
+            </div>
+            {hasMultiplier && (
+              <p className="text-xs text-orange-600 mt-1">
+                🔥 {streak.multiplier}x streak bonus applied (base: ${completion.baseReward} / {completion.baseScore} pts)
+              </p>
+            )}
+          </div>
+
+          {/* Streak display */}
+          <div className="flex items-center justify-center gap-3">
+            <span className="text-3xl">🔥</span>
+            <span className="text-2xl font-bold text-gray-900">{streak.current} Day Streak</span>
+          </div>
+
+          {/* Milestone celebration */}
+          {hasMilestone && (
+            <div className="bg-orange-50 border-2 border-orange-200 rounded-lg p-4 text-center">
+              <p className="text-lg font-bold text-orange-800">
+                {streak.milestone!.emoji} {streak.milestone!.label}
+              </p>
+              <p className="text-sm text-orange-700 mt-1">
+                {streak.milestone!.multiplier}x reward multiplier unlocked!
+              </p>
+            </div>
+          )}
+
+          {/* Tier upgrade */}
+          {hasTierUp && (
+            <div className="bg-linear-to-r from-pink-50 to-purple-50 border-2 border-pink-300 rounded-lg p-4 text-center">
+              <p className="text-lg font-bold text-pink-800">
+                {creator.previousTier} &rarr; {creator.newTier}
+              </p>
+              <p className="text-sm text-pink-700 mt-1">
+                Higher commission rate + squad bonuses unlocked!
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="p-6 pt-0 flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 bg-pink-500 text-white py-3 rounded-lg font-semibold hover:bg-pink-600 transition-colors"
+          >
+            Continue
+          </button>
+          <ShareButton
+            text={`I just completed a ${completion.missionType} mission on BANILACO SQUAD! 🔥 ${streak.current} day streak!`}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ShareButton({ text }: { text: string }) {
+  const handleShare = async () => {
+    if (navigator.share) {
+      await navigator.share({ text });
+    } else {
+      await navigator.clipboard.writeText(text);
+    }
+  };
+
+  return (
+    <button
+      onClick={handleShare}
+      className="px-4 py-3 border-2 border-gray-200 rounded-lg font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+      title="Share your achievement"
+    >
+      📤
+    </button>
   );
 }

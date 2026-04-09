@@ -103,6 +103,53 @@ export async function notifySquadJoin(
   await sendToChannel(client, 'squadActivity', embed);
 }
 
+export async function notifyStreakMilestone(
+  client: Client,
+  params: {
+    discordUserId: string;
+    streakDays: number;
+    milestoneName: string;
+    milestoneEmoji: string;
+    multiplier: number;
+  },
+): Promise<void> {
+  const embed = new EmbedBuilder()
+    .setTitle(`${params.milestoneEmoji} Streak Milestone!`)
+    .setColor(0xF59E0B)
+    .setDescription(
+      `<@${params.discordUserId}> hit a **${params.streakDays}-day streak!**\n\n` +
+      `${params.milestoneEmoji} **${params.milestoneName}** unlocked!\n` +
+      `All mission rewards now have a **${params.multiplier}x multiplier!**`,
+    )
+    .setTimestamp();
+
+  await sendToChannel(client, 'missionFeed', embed);
+}
+
+export async function notifyLeagueRankChange(
+  client: Client,
+  params: {
+    discordUserId: string;
+    newRank: number;
+    previousRank: number;
+    seasonTitle: string;
+  },
+): Promise<void> {
+  const isUp = params.newRank < params.previousRank;
+  const diff = Math.abs(params.newRank - params.previousRank);
+
+  const embed = new EmbedBuilder()
+    .setColor(isUp ? 0x10B981 : 0xEF4444)
+    .setDescription(
+      `${isUp ? '📈' : '📉'} <@${params.discordUserId}> ` +
+      `**#${params.previousRank}** → **#${params.newRank}** ` +
+      `(${isUp ? '↑' : '↓'}${diff}) in ${params.seasonTitle}`,
+    )
+    .setTimestamp();
+
+  await sendToChannel(client, 'pinkLeague', embed);
+}
+
 export async function notifyDailyMissions(
   client: Client,
   missionsList: Array<{ title: string; missionType: string; rewardAmount: string; scoreAmount: number }>,
