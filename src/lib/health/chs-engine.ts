@@ -160,10 +160,19 @@ export async function computeCHS(creatorId: string, creator: Creator): Promise<C
 
 /**
  * Count total missions completed today by a creator (for ORANGE zone daily cap).
+ *
+ * Accepts an optional executor so callers inside a transaction can read their
+ * own pending writes — avoids a TOCTOU race where a creator opens two parallel
+ * submissions and slips past `dailyMissionCap`.
  */
-export async function getTodayMissionCount(creatorId: string): Promise<number> {
-  const today = new Date().toISOString().split('T')[0];
-  const [result] = await db
+type DbExecutor = { select: typeof db.select };
+export async function getTodayMissionCount(
+  creatorId: string,
+  executor: DbExecutor = db,
+  now: Date = new Date(),
+): Promise<number> {
+  const today = now.toISOString().split('T')[0];
+  const [result] = await executor
     .select({ count: sql<number>`COUNT(*)::int` })
     .from(missionCompletions)
     .where(

@@ -1,7 +1,7 @@
 import {
-  pgTable, uuid, text, integer, decimal, boolean, timestamp, date, jsonb, unique,
+  pgTable, uuid, text, integer, decimal, boolean, timestamp, date, jsonb, unique, index,
 } from 'drizzle-orm/pg-core';
-import { relations, sql } from 'drizzle-orm';
+import { relations } from 'drizzle-orm';
 import { creators } from './creators';
 
 // ---------------------------------------------------------------------------
@@ -65,12 +65,11 @@ export const missionCompletions = pgTable('mission_completions', {
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
-  // One completion per day per mission per creator
-  dailyUnique: unique('uq_daily_completion').on(
+  // Per-creator completion history index (used by /api/missions, /api/creator stats, CHS engine).
+  // Daily uniqueness enforced via partial unique index on DATE(completed_at) — see migration 0001.
+  creatorCompletedIdx: index('idx_mission_completion_creator_completed').on(
     table.creatorId,
-    table.missionId,
-    // Note: Drizzle doesn't natively support expression-based unique.
-    // This will be enforced via application logic + DB function index.
+    table.completedAt,
   ),
 }));
 

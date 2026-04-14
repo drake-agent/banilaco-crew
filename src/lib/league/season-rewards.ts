@@ -12,8 +12,8 @@
  */
 
 import { db } from '@/db';
-import { pinkLeagueEntries, pinkLeagueSeasons } from '@/db/schema/league';
-import { eq, desc, asc } from 'drizzle-orm';
+import { pinkLeagueEntries } from '@/db/schema/league';
+import { eq, and, desc } from 'drizzle-orm';
 
 export interface SeasonRewardTier {
   percentile: number; // top X%
@@ -119,12 +119,17 @@ export async function applyCarryOver(
 
     const { multiplier } = getCarryOverMultiplier(entry.finalRank, total);
 
-    // Update the new season entry if it exists
+    // C2 FIX: scope the update to BOTH the new season AND this specific creator.
+    // The previous query only filtered by seasonId, so the first row in the new
+    // season received every iteration's multiplier.
     const [existing] = await db
       .select({ id: pinkLeagueEntries.id })
       .from(pinkLeagueEntries)
       .where(
-        eq(pinkLeagueEntries.seasonId, newSeasonId),
+        and(
+          eq(pinkLeagueEntries.seasonId, newSeasonId),
+          eq(pinkLeagueEntries.creatorId, entry.creatorId),
+        ),
       )
       .limit(1);
 

@@ -6,6 +6,7 @@ import { pinkLeagueSeasons } from '@/db/schema/league';
 import { getCreatorFromAuth } from '@/lib/auth';
 import { validateCollabInit, calculateBoost, getWeeklyCollabCount, WEEKLY_LIMIT } from '@/lib/collab/collab-engine';
 import { parseJsonBody } from '@/lib/api/errors';
+import { alias } from 'drizzle-orm/pg-core';
 import { eq, and, or, desc } from 'drizzle-orm';
 
 /**
@@ -17,7 +18,12 @@ export async function GET() {
 
   const { creatorId } = result;
 
-  const myCollabs = await db
+  // H6 FIX: single query with two LEFT JOINs instead of N+1.
+  // Pick the counterparty in SQL so we never hit the creators table per row.
+  const initiatorCreator = alias(creators, 'initiator_creator');
+  const partnerCreator = alias(creators, 'partner_creator');
+
+  const rows = await db
     .select({
       id: collabDuos.id,
       initiatorId: collabDuos.initiatorId,
@@ -31,8 +37,14 @@ export async function GET() {
       partnerContentUrl: collabDuos.partnerContentUrl,
       createdAt: collabDuos.createdAt,
       verifiedAt: collabDuos.verifiedAt,
+      initiatorHandle: initiatorCreator.tiktokHandle,
+      initiatorName: initiatorCreator.displayName,
+      partnerHandle: partnerCreator.tiktokHandle,
+      partnerName: partnerCreator.displayName,
     })
     .from(collabDuos)
+    .leftJoin(initiatorCreator, eq(initiatorCreator.id, collabDuos.initiatorId))
+    .leftJoin(partnerCreator, eq(partnerCreator.id, collabDuos.partnerId))
     .where(
       or(
         eq(collabDuos.initiatorId, creatorId),
@@ -42,25 +54,26 @@ export async function GET() {
     .orderBy(desc(collabDuos.createdAt))
     .limit(20);
 
-  // Enrich with partner info
-  const enriched = await Promise.all(
-    myCollabs.map(async (c) => {
-      const otherCreatorId = c.initiatorId === creatorId ? c.partnerId : c.initiatorId;
-      const [partner] = await db
-        .select({ tiktokHandle: creators.tiktokHandle, displayName: creators.displayName })
-        .from(creators)
-        .where(eq(creators.id, otherCreatorId))
-        .limit(1);
-
-      return {
-        ...c,
-        scoreBoostPct: parseFloat(c.scoreBoostPct ?? '0'),
-        partnerHandle: partner?.tiktokHandle ?? 'unknown',
-        partnerName: partner?.displayName,
-        isInitiator: c.initiatorId === creatorId,
-      };
-    }),
-  );
+  const enriched = rows.map((c) => {
+    const isInitiator = c.initiatorId === creatorId;
+    return {
+      id: c.id,
+      initiatorId: c.initiatorId,
+      partnerId: c.partnerId,
+      productTag: c.productTag,
+      status: c.status,
+      scoreBoostPct: parseFloat(c.scoreBoostPct ?? '0'),
+      duoStreakCount: c.duoStreakCount,
+      isDynamicDuo: c.isDynamicDuo,
+      initiatorContentUrl: c.initiatorContentUrl,
+      partnerContentUrl: c.partnerContentUrl,
+      createdAt: c.createdAt,
+      verifiedAt: c.verifiedAt,
+      partnerHandle: (isInitiator ? c.partnerHandle : c.initiatorHandle) ?? 'unknown',
+      partnerName: isInitiator ? c.partnerName : c.initiatorName,
+      isInitiator,
+    };
+  });
 
   const weeklyCount = await getWeeklyCollabCount(creatorId);
 
@@ -184,8 +197,33 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Not part of this collab' }, { status: 403 });
   }
 
-  if (collab.status === 'verified') {
-    return NextResponse.json({ error: 'Collab already verified' }, { status: 409 });
+  if (collab.status === 'verified' || collab.status === 'expired') {
+    return NextResponse.json(
+      { error: `Collab already ${collab.status}` },
+      { status: 409 },
+    );
+  }
+
+  // H2 FIX: block resubmission on one's own side — prevents swapping out the
+  // proof URL after a verified pair state or replaying the verify branch.
+  const mySideAlreadyFilled = isInitiator
+    ? !!collab.initiatorContentUrl
+    : !!collab.partnerContentUrl;
+  if (mySideAlreadyFilled) {
+    return NextResponse.json(
+      { error: 'You have already submitted your content URL for this collab' },
+      { status: 409 },
+    );
+  }
+
+  // M2 FIX: validate URL shape — prevents javascript:/data: exploits and garbage.
+  try {
+    const parsedUrl = new URL(contentUrl);
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return NextResponse.json({ error: 'contentUrl must use http(s)' }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: 'contentUrl must be a valid URL' }, { status: 400 });
   }
 
   // Weekly limit for partner

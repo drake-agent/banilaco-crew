@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { pinkLeagueSeasons, pinkLeagueEntries, pinkLeagueVotes } from '@/db/schema/league';
+import { discordLinks } from '@/db/schema/discord';
 import { verifyAuth } from '@/lib/auth';
 import { eq, and, sql } from 'drizzle-orm';
 import { parseJsonBody } from '@/lib/api/errors';
@@ -31,6 +32,23 @@ export async function POST(request: NextRequest) {
 
   if (!season) {
     return NextResponse.json({ error: 'Season is not in voting phase' }, { status: 400 });
+  }
+
+  // H3 FIX: block self-voting. If the voter is linked to a creator, they cannot
+  // vote for themselves. Fans without a linked creator row fall through.
+  const discordId = authResult.user.discordId;
+  if (discordId) {
+    const [voterLink] = await db
+      .select({ creatorId: discordLinks.creatorId })
+      .from(discordLinks)
+      .where(eq(discordLinks.discordUserId, discordId))
+      .limit(1);
+    if (voterLink?.creatorId === creatorId) {
+      return NextResponse.json(
+        { error: 'You cannot vote for yourself' },
+        { status: 403 },
+      );
+    }
   }
 
   // Verify creator is a crown candidate

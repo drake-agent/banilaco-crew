@@ -32,14 +32,16 @@ const MYSTERY_TIERS: MysteryTier[] = [
 
 /**
  * Roll a mystery multiplier using weighted random selection.
+ *
+ * @param rng - Optional PRNG (defaults to Math.random). Inject in tests for determinism.
  */
-export function rollMysteryMultiplier(): {
+export function rollMysteryMultiplier(rng: () => number = Math.random): {
   multiplier: number;
   label: string;
   emoji: string;
 } {
   const totalWeight = MYSTERY_TIERS.reduce((sum, t) => sum + t.weight, 0);
-  let roll = Math.random() * totalWeight;
+  let roll = rng() * totalWeight;
 
   for (const tier of MYSTERY_TIERS) {
     roll -= tier.weight;

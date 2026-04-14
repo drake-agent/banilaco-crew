@@ -4,13 +4,23 @@ import { missions, missionCompletions, dailyMissionSchedule } from '@/db/schema/
 import { creators } from '@/db/schema/creators';
 import { getCreatorFromAuth } from '@/lib/auth';
 import { calculateTier } from '@/lib/tier/auto-update';
-import { calculateStreak, getStreakMultiplier } from '@/lib/streak/streak-engine';
+import { calculateStreak } from '@/lib/streak/streak-engine';
 import { computeCHS, getTodayMissionCount } from '@/lib/health/chs-engine';
 import { runExploitChecks } from '@/lib/health/anti-exploit';
 import { rollMysteryMultiplier } from '@/lib/missions/mystery';
 import { trackMissionCompletion } from '@/agent/memory/entity';
-import { eq, and, gte, lte, sql } from 'drizzle-orm';
-import { parseJsonBody, handleRouteError } from '@/lib/api/errors';
+import { eq, and, gte, lte } from 'drizzle-orm';
+import { parseJsonBody } from '@/lib/api/errors';
+
+/**
+ * C3 FIX: Hard ceiling on stacked reward multipliers.
+ *
+ * Upstream components (streak × CHS × mystery) can multiply up to 10× when the
+ * 5x jackpot lands on top of a 2x milestone streak. Capping the product keeps
+ * the expected value predictable for finance and prevents an exploit where a
+ * creator games the mystery RNG to blow out a single month of flat-fee budget.
+ */
+const MAX_REWARD_MULTIPLIER = 4.0;
 
 /**
  * POST /api/missions/complete — Submit mission completion
@@ -81,17 +91,9 @@ export async function POST(request: Request) {
       { status: 429 },
     );
   }
-
-  // ORANGE zone: max 2 missions/day
-  if (chs.zone === 'ORANGE') {
-    const todayCount = await getTodayMissionCount(creatorResult.creatorId);
-    if (todayCount >= chs.dailyMissionCap) {
-      return NextResponse.json(
-        { error: 'Daily mission limit reached', zone: chs.zone },
-        { status: 429 },
-      );
-    }
-  }
+  // H1 FIX: the ORANGE-zone daily-cap check moved inside the transaction below,
+  // so the read and the insert happen under the same snapshot and two parallel
+  // submissions can't both slip through.
 
   // --- Mystery Mission: check if this mission is scheduled as mystery today ---
   const today = new Date().toISOString().split('T')[0];
@@ -133,6 +135,14 @@ export async function POST(request: Request) {
         throw new Error('ALREADY_COMPLETED');
       }
 
+      // H1 FIX: ORANGE-zone daily cap enforced inside the transaction.
+      if (chs.zone === 'ORANGE') {
+        const todayCount = await getTodayMissionCount(creatorResult.creatorId, tx);
+        if (todayCount >= chs.dailyMissionCap) {
+          throw new Error('DAILY_CAP_REACHED');
+        }
+      }
+
       // 4. Calculate streak
       const streakResult = calculateStreak(
         creatorResult.creator.currentStreak ?? 0,
@@ -145,8 +155,19 @@ export async function POST(request: Request) {
       const cappedStreakMultiplier = Math.min(streakResult.multiplier, chs.streakCap);
       const baseReward = parseFloat(mission.rewardAmount ?? '0');
       const baseScore = mission.scoreAmount ?? 0;
-      const rewardAmount = Math.round(baseReward * cappedStreakMultiplier * chs.rewardMultiplier * mysteryMultiplier * 100) / 100;
-      const scoreAmount = Math.round(baseScore * cappedStreakMultiplier * mysteryMultiplier); // Score always granted (even RED)
+
+      // C3 FIX: clamp the total stacked multiplier so streak × CHS × mystery can never
+      // exceed MAX_REWARD_MULTIPLIER (4.0×). The uncapped product could hit 10× when a
+      // 5× mystery lands on top of a 30-day streak.
+      const rawMultiplier = cappedStreakMultiplier * chs.rewardMultiplier * mysteryMultiplier;
+      const totalMultiplier = Math.min(rawMultiplier, MAX_REWARD_MULTIPLIER);
+      const scoreMultiplier = Math.min(
+        cappedStreakMultiplier * mysteryMultiplier,
+        MAX_REWARD_MULTIPLIER,
+      );
+
+      const rewardAmount = Math.round(baseReward * totalMultiplier * 100) / 100;
+      const scoreAmount = Math.round(baseScore * scoreMultiplier); // Score always granted (even RED)
 
       // 5. Insert completion
       const [completion] = await tx
@@ -258,6 +279,12 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Mission already completed today' },
         { status: 409 },
+      );
+    }
+    if (err instanceof Error && err.message === 'DAILY_CAP_REACHED') {
+      return NextResponse.json(
+        { error: 'Daily mission limit reached', zone: chs.zone },
+        { status: 429 },
       );
     }
     throw err;

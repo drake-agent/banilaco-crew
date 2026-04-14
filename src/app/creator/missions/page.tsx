@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useApi, useMutation, LoadingSkeleton, ErrorBanner } from '@/hooks/use-api';
 import { StreakWidget } from '@/components/streak-widget';
 
@@ -60,9 +60,11 @@ const MISSION_CONFIG = {
 
 export default function MissionsPage() {
   const { data, loading, error, refetch } = useApi<MissionsResponse>('missions');
-  const { mutate: completeMission, loading: completing } = useMutation<CompletionResult>('missions/complete', 'POST');
+  const { mutate: completeMission } = useMutation<CompletionResult>('missions/complete', 'POST');
   const [completingId, setCompletingId] = useState<string | null>(null);
-  const [proofUrl, setProofUrl] = useState('');
+  // H4 FIX: per-mission proof URL map so opening mission B doesn't inherit
+  // mission A's input. The old single `proofUrl` state leaked across cards.
+  const [proofUrls, setProofUrls] = useState<Record<string, string>>({});
   const [showProofInput, setShowProofInput] = useState<string | null>(null);
   const [celebration, setCelebration] = useState<CompletionResult | null>(null);
 
@@ -71,10 +73,28 @@ export default function MissionsPage() {
 
   const handleComplete = async (missionId: string) => {
     setCompletingId(missionId);
+    const rawProof = proofUrls[missionId]?.trim() ?? '';
+
+    // M2 FIX: validate proof URL format before sending.
+    if (rawProof) {
+      try {
+        const parsed = new URL(rawProof);
+        if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+          alert('Proof URL must use http(s)');
+          setCompletingId(null);
+          return;
+        }
+      } catch {
+        alert('Please enter a valid URL');
+        setCompletingId(null);
+        return;
+      }
+    }
+
     try {
       const result = await completeMission({
         missionId,
-        proofUrl: proofUrl || undefined,
+        proofUrl: rawProof || undefined,
       });
 
       if (!result) return;
@@ -87,7 +107,12 @@ export default function MissionsPage() {
       // Show celebration modal
       setCelebration(result);
 
-      setProofUrl('');
+      // Clear only this mission's proof URL.
+      setProofUrls((prev) => {
+        const next = { ...prev };
+        delete next[missionId];
+        return next;
+      });
       setShowProofInput(null);
       refetch();
     } catch (err) {
@@ -228,23 +253,38 @@ export default function MissionsPage() {
                         Complete to reveal your reward multiplier!
                       </p>
                     )}
+                    {/* M3 FIX: cleanly split mystery vs normal reward rendering — the old
+                        conditional produced "?x $$5.00" style output. */}
                     <div className="flex gap-4 ml-12 text-sm">
-                      <span className="font-semibold text-pink-600">
-                        💰 {mission.isMystery && !mission.completed ? '?x ' : '+$'}{mission.isMystery && !mission.completed ? `$${reward}` : `${reward}`} Flat Fee
-                        {multiplier > 1 && !mission.isMystery && (
-                          <span className="text-orange-500 ml-1">
-                            (${(reward * multiplier).toFixed(2)} with streak)
+                      {mission.isMystery && !mission.completed ? (
+                        <>
+                          <span className="font-semibold text-pink-600">
+                            💰 ?× ${reward.toFixed(2)} Flat Fee
                           </span>
-                        )}
-                      </span>
-                      <span className="font-semibold text-purple-600">
-                        ⭐ {mission.isMystery && !mission.completed ? '?x ' : '+'}{mission.isMystery && !mission.completed ? `${score}` : `${score}`} Score
-                        {multiplier > 1 && !mission.isMystery && (
-                          <span className="text-orange-500 ml-1">
-                            ({Math.round(score * multiplier)} with streak)
+                          <span className="font-semibold text-purple-600">
+                            ⭐ ?× {score} Score
                           </span>
-                        )}
-                      </span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-semibold text-pink-600">
+                            💰 +${reward.toFixed(2)} Flat Fee
+                            {multiplier > 1 && (
+                              <span className="text-orange-500 ml-1">
+                                (${(reward * multiplier).toFixed(2)} with streak)
+                              </span>
+                            )}
+                          </span>
+                          <span className="font-semibold text-purple-600">
+                            ⭐ +{score} Score
+                            {multiplier > 1 && (
+                              <span className="text-orange-500 ml-1">
+                                ({Math.round(score * multiplier)} with streak)
+                              </span>
+                            )}
+                          </span>
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -255,11 +295,18 @@ export default function MissionsPage() {
                       <div className="flex flex-col gap-2">
                         {showProofInput === mission.id ? (
                           <>
+                            <label htmlFor={`proof-${mission.id}`} className="sr-only">
+                              Proof URL for {mission.title}
+                            </label>
                             <input
+                              id={`proof-${mission.id}`}
                               type="url"
                               placeholder="Proof URL (optional)"
-                              value={proofUrl}
-                              onChange={(e) => setProofUrl(e.target.value)}
+                              value={proofUrls[mission.id] ?? ''}
+                              onChange={(e) =>
+                                setProofUrls((prev) => ({ ...prev, [mission.id]: e.target.value }))
+                              }
+                              aria-label={`Proof URL for mission: ${mission.title}`}
                               className="text-sm border rounded-lg px-3 py-2 w-48"
                             />
                             <button
@@ -273,6 +320,7 @@ export default function MissionsPage() {
                         ) : (
                           <button
                             onClick={() => setShowProofInput(mission.id)}
+                            aria-label={`Complete mission: ${mission.title}`}
                             className="bg-pink-500 text-white px-6 py-3 rounded-lg text-sm font-semibold hover:bg-pink-600 transition-colors"
                           >
                             Complete
@@ -308,8 +356,20 @@ function CelebrationModal({
   const hasTierUp = creator.tierChanged;
   const hasMystery = completion.isMystery && completion.mystery;
 
+  // Low-priority a11y fix: Escape closes the modal.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+
   return (
     <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="celebration-title"
       className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
       onClick={onClose}
     >
@@ -322,7 +382,7 @@ function CelebrationModal({
           <p className="text-5xl mb-2">
             {hasTierUp ? '🎉🏆🎉' : hasMystery ? completion.mystery!.emoji : hasMilestone ? streak.milestone!.emoji : '✅'}
           </p>
-          <h2 className="text-xl font-bold">
+          <h2 id="celebration-title" className="text-xl font-bold">
             {hasTierUp
               ? 'Tier Upgrade!'
               : hasMystery

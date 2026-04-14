@@ -10,7 +10,7 @@ import { creators } from '@/db/schema/creators';
 import { contentTracking } from '@/db/schema/content';
 import { pinkLeagueSeasons, pinkLeagueEntries, pinkLeagueDailySnapshots } from '@/db/schema/league';
 import { collabDuos } from '@/db/schema/collab';
-import { eq, and, or, gte, desc, sql, asc } from 'drizzle-orm';
+import { eq, and, gte, inArray, sql } from 'drizzle-orm';
 
 // Scoring weights
 const WEIGHT_GMV = 1.0;
@@ -56,12 +56,21 @@ export function computePinkScore(params: {
 /**
  * Take a daily snapshot of all league participants' rankings.
  * Called by Cron daily during active season.
+ *
+ * H5 FIX: content metrics and collab boost are now bulk-aggregated in two queries
+ * instead of two-per-creator. Previously this routine fired 2×N queries per run.
+ *
+ * M7 FIX: `now` is injectable so the Cron can re-run for a specific date without
+ * wall-clock drift (e.g. backfills after a failure).
  */
-export async function takeDailySnapshot(seasonId: string): Promise<{
+export async function takeDailySnapshot(
+  seasonId: string,
+  now: Date = new Date(),
+): Promise<{
   participantCount: number;
   snapshotDate: string;
 }> {
-  const today = new Date().toISOString().split('T')[0];
+  const today = now.toISOString().split('T')[0];
 
   // Get all entries for this season (include carry-over multiplier)
   const entries = await db
@@ -85,32 +94,75 @@ export async function takeDailySnapshot(seasonId: string): Promise<{
     .where(eq(pinkLeagueSeasons.id, seasonId))
     .limit(1);
 
-  const dayOfWeek = new Date().getDay(); // 0=Sun, 1=Mon
+  const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon
   const boostConfig = (season?.boostConfig ?? {}) as Record<string, unknown>;
   const boostDays = (boostConfig.boostDays as number[]) ?? [1]; // Default: Monday
   const boostMultiplier = boostDays.includes(dayOfWeek) ? 1.5 : 1.0;
 
   // Compute scores for each participant
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400000);
+  const creatorIds = entries.map((e) => e.creatorId);
+
+  // H5 FIX: one aggregate query for all participants' content.
+  const contentRows = await db
+    .select({
+      creatorId: contentTracking.creatorId,
+      totalViews: sql<number>`COALESCE(SUM(${contentTracking.views}), 0)::int`,
+      totalLikes: sql<number>`COALESCE(SUM(${contentTracking.likes}), 0)::int`,
+      totalComments: sql<number>`COALESCE(SUM(${contentTracking.comments}), 0)::int`,
+      totalShares: sql<number>`COALESCE(SUM(${contentTracking.shares}), 0)::int`,
+    })
+    .from(contentTracking)
+    .where(
+      and(
+        inArray(contentTracking.creatorId, creatorIds),
+        gte(contentTracking.postedAt, thirtyDaysAgo),
+      ),
+    )
+    .groupBy(contentTracking.creatorId);
+
+  const contentByCreator = new Map(contentRows.map((r) => [r.creatorId, r]));
+
+  // H5 FIX: one aggregate query for all verified collab boosts this season.
+  const collabRowsInit = await db
+    .select({
+      creatorId: collabDuos.initiatorId,
+      totalBoost: sql<number>`COALESCE(SUM(${collabDuos.scoreBoostPct}::numeric), 0)::float`,
+    })
+    .from(collabDuos)
+    .where(
+      and(
+        inArray(collabDuos.initiatorId, creatorIds),
+        eq(collabDuos.seasonId, seasonId),
+        eq(collabDuos.status, 'verified'),
+      ),
+    )
+    .groupBy(collabDuos.initiatorId);
+
+  const collabRowsPart = await db
+    .select({
+      creatorId: collabDuos.partnerId,
+      totalBoost: sql<number>`COALESCE(SUM(${collabDuos.scoreBoostPct}::numeric), 0)::float`,
+    })
+    .from(collabDuos)
+    .where(
+      and(
+        inArray(collabDuos.partnerId, creatorIds),
+        eq(collabDuos.seasonId, seasonId),
+        eq(collabDuos.status, 'verified'),
+      ),
+    )
+    .groupBy(collabDuos.partnerId);
+
+  const collabByCreator = new Map<string, number>();
+  for (const r of [...collabRowsInit, ...collabRowsPart]) {
+    collabByCreator.set(r.creatorId, (collabByCreator.get(r.creatorId) ?? 0) + (r.totalBoost ?? 0));
+  }
+
   const scored: Array<{ entryId: string; creatorId: string; score: PinkScoreBreakdown }> = [];
 
   for (const entry of entries) {
-    // Aggregate recent content metrics
-    const [contentAgg] = await db
-      .select({
-        totalViews: sql<number>`COALESCE(SUM(${contentTracking.views}), 0)`,
-        totalLikes: sql<number>`COALESCE(SUM(${contentTracking.likes}), 0)`,
-        totalComments: sql<number>`COALESCE(SUM(${contentTracking.comments}), 0)`,
-        totalShares: sql<number>`COALESCE(SUM(${contentTracking.shares}), 0)`,
-      })
-      .from(contentTracking)
-      .where(
-        and(
-          eq(contentTracking.creatorId, entry.creatorId),
-          gte(contentTracking.postedAt, thirtyDaysAgo),
-        ),
-      );
-
+    const contentAgg = contentByCreator.get(entry.creatorId);
     const score = computePinkScore({
       monthlyGmv: parseFloat(entry.monthlyGmv ?? '0'),
       views: contentAgg?.totalViews ?? 0,
@@ -120,22 +172,7 @@ export async function takeDailySnapshot(seasonId: string): Promise<{
       followerCount: entry.followerCount ?? 1,
     });
 
-    // Apply Collab Duo boost: sum all verified collab boosts for this season
-    const [collabAgg] = await db
-      .select({ totalBoost: sql<number>`COALESCE(SUM(${collabDuos.scoreBoostPct}::numeric), 0)` })
-      .from(collabDuos)
-      .where(
-        and(
-          or(
-            eq(collabDuos.initiatorId, entry.creatorId),
-            eq(collabDuos.partnerId, entry.creatorId),
-          ),
-          eq(collabDuos.seasonId, seasonId),
-          eq(collabDuos.status, 'verified'),
-        ),
-      );
-
-    const collabBoostPct = collabAgg?.totalBoost ?? 0;
+    const collabBoostPct = collabByCreator.get(entry.creatorId) ?? 0;
     if (collabBoostPct > 0) {
       score.totalPinkScore = Math.round(score.totalPinkScore * (1 + collabBoostPct) * 100) / 100;
     }
