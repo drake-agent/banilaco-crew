@@ -259,7 +259,7 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
         const res = await fetch('/api/creators');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        setCreators(json.data || []);
+        setCreators(json.creators || []);
       } catch (err) {
         console.error('Creators fetch error:', err);
       } finally {
@@ -608,10 +608,10 @@ export default function SampleShipmentsPage() {
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="font-medium text-gray-900">
-                            @{(sample as any).creator?.tiktokHandle}
+                            @{(sample as any).creator?.tiktokHandle ?? (sample as any).creator?.tiktok_handle}
                           </span>
                           <span className="text-xs text-gray-600">
-                            {(sample as any).creator?.displayName}
+                            {(sample as any).creator?.displayName ?? (sample as any).creator?.display_name}
                           </span>
                         </div>
                       </td>

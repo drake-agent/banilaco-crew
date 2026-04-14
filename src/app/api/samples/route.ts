@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { db } from '@/db';
 import { sampleShipments } from '@/db/schema/samples';
 import { creators } from '@/db/schema/creators';
-import { verifyAdmin } from '@/lib/auth';
+import { getCreatorFromAuth, verifyAdmin } from '@/lib/auth';
 import { eq, desc, count, and } from 'drizzle-orm';
 
 const samplePatchSchema = z.object({
@@ -25,7 +25,12 @@ const ALLOWED_FIELDS = [
 
 export async function GET(request: NextRequest) {
   const adminResult = await verifyAdmin();
-  if (adminResult.error) return adminResult.error;
+  let creatorResult: { creatorId: string } | null = null;
+  if (adminResult.error) {
+    const authResult = await getCreatorFromAuth();
+    if (authResult.error) return authResult.error;
+    creatorResult = { creatorId: authResult.creatorId };
+  }
 
   const { searchParams } = new URL(request.url);
   const status = searchParams.get('status');
@@ -35,6 +40,7 @@ export async function GET(request: NextRequest) {
   const offset = (page - 1) * limit;
 
   const conditions = [];
+  if (creatorResult) conditions.push(eq(sampleShipments.creatorId, creatorResult.creatorId));
   if (status) conditions.push(eq(sampleShipments.status, status as typeof sampleShipments.status.enumValues[number]));
   if (setType) conditions.push(eq(sampleShipments.setType, setType as typeof sampleShipments.setType.enumValues[number]));
   const where = conditions.length > 0 ? and(...conditions) : undefined;
@@ -58,7 +64,12 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     data: data.map((d) => ({
       ...d.shipment,
-      creator: { tiktok_handle: d.creatorHandle, display_name: d.creatorName },
+      creator: {
+        tiktokHandle: d.creatorHandle,
+        displayName: d.creatorName,
+        tiktok_handle: d.creatorHandle,
+        display_name: d.creatorName,
+      },
     })),
     pagination: { page, limit, total: totalResult?.count ?? 0 },
   });
