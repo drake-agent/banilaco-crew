@@ -69,15 +69,18 @@ export default function AdminReferralsPage() {
   }, []);
 
   // Derive display data from API response
-  const mockKPIs = {
+  // TODO: /api/referrals now returns Squad-shape data; legacy referral KPI
+  // fields (total_referrals, conversion_rate, etc.) will be 0 until the
+  // admin referrals endpoint is migrated to the Squad revenue-share model.
+  const kpis = {
     totalSignups: referralData?.stats?.total_referrals || 0,
     conversionRate: referralData?.stats?.conversion_rate || 0,
     totalBonusesPaid: referralData?.stats?.total_bonuses || 0,
     avgReferralsPerCreator: referralData?.stats?.avg_per_creator || 0,
   };
-  const mockTopReferrers = referralData?.leaderboard || [];
-  const mockFunnelData = referralData?.funnel || [];
-  const mockTrendData = referralData?.trend || [];
+  const topReferrers = referralData?.leaderboard || [];
+  const funnelData = referralData?.funnel || [];
+  const trendData = referralData?.trend || [];
 
   if (loading) {
     return (
@@ -110,7 +113,7 @@ export default function AdminReferralsPage() {
               👥
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{mockKPIs.totalSignups}</p>
+          <p className="text-3xl font-bold text-gray-900">{kpis.totalSignups}</p>
           <p className="text-xs text-green-600 mt-2">↑ 8% vs last month</p>
         </div>
 
@@ -121,7 +124,7 @@ export default function AdminReferralsPage() {
               📊
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{mockKPIs.conversionRate}%</p>
+          <p className="text-3xl font-bold text-gray-900">{kpis.conversionRate}%</p>
           <p className="text-xs text-green-600 mt-2">↑ 2.1% vs last month</p>
         </div>
 
@@ -132,7 +135,7 @@ export default function AdminReferralsPage() {
               💰
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">${mockKPIs.totalBonusesPaid}</p>
+          <p className="text-3xl font-bold text-gray-900">${kpis.totalBonusesPaid}</p>
           <p className="text-xs text-green-600 mt-2">↑ 15% vs last month</p>
         </div>
 
@@ -143,7 +146,7 @@ export default function AdminReferralsPage() {
               ⭐
             </div>
           </div>
-          <p className="text-3xl font-bold text-gray-900">{mockKPIs.avgReferralsPerCreator}</p>
+          <p className="text-3xl font-bold text-gray-900">{kpis.avgReferralsPerCreator}</p>
           <p className="text-xs text-green-600 mt-2">↑ 0.4 vs last month</p>
         </div>
       </div>
@@ -152,7 +155,7 @@ export default function AdminReferralsPage() {
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-6">Referral Funnel</h2>
         <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={mockFunnelData}>
+          <BarChart data={funnelData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
             <XAxis dataKey="name" stroke="#6b7280" />
             <YAxis stroke="#6b7280" />
@@ -167,13 +170,13 @@ export default function AdminReferralsPage() {
           </BarChart>
         </ResponsiveContainer>
         <div className="grid grid-cols-4 gap-4 mt-6 pt-6 border-t border-gray-200">
-          {mockFunnelData.map((item: FunnelItem, idx: number) => {
+          {funnelData.map((item: FunnelItem, idx: number) => {
             const rate =
               idx === 0
                 ? 100
                 : (
-                    (mockFunnelData[idx].value /
-                      mockFunnelData[0].value) *
+                    (funnelData[idx].value /
+                      funnelData[0].value) *
                     100
                   ).toFixed(1);
             return (
@@ -198,7 +201,7 @@ export default function AdminReferralsPage() {
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
           <h2 className="text-lg font-semibold text-gray-900 mb-6">Referral Trend (6 Months)</h2>
           <ResponsiveContainer width="100%" height={280}>
-            <AreaChart data={mockTrendData}>
+            <AreaChart data={trendData}>
               <defs>
                 <linearGradient id="colorReferrals" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
@@ -245,7 +248,7 @@ export default function AdminReferralsPage() {
           <ResponsiveContainer width="100%" height={280}>
             <PieChart>
               <Pie
-                data={mockFunnelData}
+                data={funnelData}
                 cx="50%"
                 cy="50%"
                 labelLine={false}
@@ -256,7 +259,7 @@ export default function AdminReferralsPage() {
                 fill="#8884d8"
                 dataKey="value"
               >
-                {mockFunnelData.map(
+                {funnelData.map(
                   (entry: FunnelItem, index: number) => (
                     <Cell
                       key={`cell-${index}`}
@@ -294,7 +297,7 @@ export default function AdminReferralsPage() {
               </tr>
             </thead>
             <tbody>
-              {mockTopReferrers.map(
+              {topReferrers.map(
                 (referrer: LeaderboardItem, idx: number) => {
                   const conversion = (
                     (referrer.bonus / referrer.referrals) *
@@ -304,7 +307,7 @@ export default function AdminReferralsPage() {
                     <tr
                       key={referrer.name}
                       className={`${
-                        idx === mockTopReferrers.length - 1
+                        idx === topReferrers.length - 1
                           ? ''
                           : 'border-b border-gray-200'
                       } hover:bg-gray-50`}

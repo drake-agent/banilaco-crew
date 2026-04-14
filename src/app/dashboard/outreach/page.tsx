@@ -160,9 +160,8 @@ export default function OutreachPipelinePage() {
   }, [fetchOutreach]);
 
   // Calculate KPIs
-  const mockOutreachRecords = outreachRecords;
-  const totalInPipeline = mockOutreachRecords.length;
-  const dmsSentThisWeek = mockOutreachRecords.filter((r) => {
+  const totalInPipeline = outreachRecords.length;
+  const dmsSentThisWeek = outreachRecords.filter((r) => {
     if (!r.dm_sent_at) return false;
     const dmDate = new Date(r.dm_sent_at);
     const weekAgo = new Date();
@@ -170,26 +169,26 @@ export default function OutreachPipelinePage() {
     return dmDate >= weekAgo;
   }).length;
 
-  const responded = mockOutreachRecords.filter((r) => r.status === 'responded').length;
-  const sampleRequested = mockOutreachRecords.filter(
+  const responded = outreachRecords.filter((r) => r.status === 'responded').length;
+  const sampleRequested = outreachRecords.filter(
     (r) => r.status === 'sample_requested'
   ).length;
-  const converted = mockOutreachRecords.filter((r) => r.status === 'converted').length;
-  const identified = mockOutreachRecords.filter((r) => r.status === 'identified').length;
+  const converted = outreachRecords.filter((r) => r.status === 'converted').length;
+  const identified = outreachRecords.filter((r) => r.status === 'identified').length;
 
   const responseRate =
     dmsSentThisWeek > 0 ? ((responded + sampleRequested + converted) / dmsSentThisWeek) * 100 : 0;
   const conversionRate = identified > 0 ? (converted / identified) * 100 : 0;
 
-  const tierARemaining = mockOutreachRecords.filter(
+  const tierARemaining = outreachRecords.filter(
     (r) => r.outreach_tier === 'tier_a' && r.status === 'identified'
   ).length;
-  const tierBRemaining = mockOutreachRecords.filter(
+  const tierBRemaining = outreachRecords.filter(
     (r) => r.outreach_tier === 'tier_b' && r.status === 'identified'
   ).length;
 
   // Filter records
-  const filteredRecords = mockOutreachRecords.filter((record) => {
+  const filteredRecords = outreachRecords.filter((record) => {
     const statusMatch = filterStatus === 'all' || record.status === filterStatus;
     const tierMatch = filterTier === 'all' || record.outreachTier === filterTier;
     return statusMatch && tierMatch;
@@ -626,7 +625,7 @@ export default function OutreachPipelinePage() {
         </div>
 
         <div className="mt-4 text-xs text-gray-600">
-          Showing {filteredRecords.length} of {mockOutreachRecords.length} records
+          Showing {filteredRecords.length} of {outreachRecords.length} records
         </div>
       </Card>
 

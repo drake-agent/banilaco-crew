@@ -27,10 +27,6 @@ import {
 import { SampleShipment, SampleSetType, SampleStatus, Creator } from '@/types/database';
 
 // ============================================
-// Mock Data
-// ============================================
-
-// ============================================
 // Status Configuration
 // ============================================
 

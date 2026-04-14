@@ -41,7 +41,7 @@ const getStatusLabel = (status: Sample['status']) => {
 };
 
 export default function SamplesPage() {
-  const [mockSamples, setMockSamples] = useState<any[]>([]);
+  const [samples, setSamples] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -50,7 +50,7 @@ export default function SamplesPage() {
         const res = await fetch('/api/samples?limit=50');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        setMockSamples(json.data || []);
+        setSamples(json.data || []);
       } catch (err) {
         console.error('Samples fetch error:', err);
       } finally {
@@ -124,7 +124,7 @@ export default function SamplesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {mockSamples.map((sample) => (
+                {samples.map((sample) => (
                   <tr key={sample.id} className="hover:bg-gray-50 transition">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
                       {sample.name}

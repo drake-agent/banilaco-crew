@@ -86,7 +86,7 @@ export default function DashboardPage() {
 
   // Derive stats from API response
   const latestWeek = kpiData?.data?.[kpiData.data.length - 1];
-  const mockStats = {
+  const stats = {
     totalAffiliates: latestWeek?.cumulativeAffiliates || 0,
     weeklyNetIncrease: latestWeek?.netIncrease || 0,
     monthlyGMV: latestWeek?.monthlyGmv || 0,
@@ -155,7 +155,7 @@ export default function DashboardPage() {
     );
   }
 
-  const progressPercent = (mockStats.totalAffiliates / 30000) * 100;
+  const progressPercent = (stats.totalAffiliates / 30000) * 100;
 
   return (
     <div className="p-6 space-y-6">
@@ -170,25 +170,25 @@ export default function DashboardPage() {
         <StatCard
           icon={Users}
           label="Total Affiliates"
-          value={`${(mockStats.totalAffiliates / 1000).toFixed(1)}K`}
+          value={`${(stats.totalAffiliates / 1000).toFixed(1)}K`}
           subtext="Active creators in program"
         />
         <StatCard
           icon={TrendingUp}
           label="Weekly Net Increase"
-          value={`+${mockStats.weeklyNetIncrease}`}
+          value={`+${stats.weeklyNetIncrease}`}
           subtext="New affiliates this week"
         />
         <StatCard
           icon={DollarSign}
           label="Monthly GMV"
-          value={`$${(mockStats.monthlyGMV / 1000).toFixed(0)}K`}
+          value={`$${(stats.monthlyGMV / 1000).toFixed(0)}K`}
           subtext="Gross merchandise value"
         />
         <StatCard
           icon={Clock}
           label="Weeks to 30K"
-          value={`${mockStats.weeksTo30k.toFixed(1)}`}
+          value={`${stats.weeksTo30k.toFixed(1)}`}
           subtext="At current pace"
         />
       </div>
@@ -204,7 +204,7 @@ export default function DashboardPage() {
           <div className="flex items-end justify-between mb-3">
             <div>
               <p className="text-2xl font-bold text-gray-900">
-                {mockStats.totalAffiliates.toLocaleString()}
+                {stats.totalAffiliates.toLocaleString()}
               </p>
               <p className="text-sm text-gray-600">out of 30,000 affiliates</p>
             </div>
