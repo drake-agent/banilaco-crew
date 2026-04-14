@@ -7,7 +7,8 @@ import { db } from '@/db';
 import { sampleShipments } from '@/db/schema/samples';
 import { syncLog } from '@/db/schema/sync';
 import { eq, and, isNotNull } from 'drizzle-orm';
-import type { IShippingTrackerAdapter, TrackingResult } from '@/lib/adapters/shipping-tracker.adapter';
+import type { IShippingTrackerAdapter, TrackingResult, CarrierCode } from '@/lib/adapters/shipping-tracker.adapter';
+import { onSampleDelivered } from '@/agent/memory/creator-sync';
 
 interface SyncResult {
   total_checked: number;
@@ -41,6 +42,9 @@ export class SampleShippingSync {
       const shipments = await db
         .select({
           id: sampleShipments.id,
+          creatorId: sampleShipments.creatorId,
+          setType: sampleShipments.setType,
+          skuList: sampleShipments.skuList,
           trackingNumber: sampleShipments.trackingNumber,
           carrier: sampleShipments.carrier,
           status: sampleShipments.status,
@@ -63,7 +67,7 @@ export class SampleShippingSync {
       // 2. Batch track
       const trackingItems = shipments.map((s) => ({
         tracking_number: s.trackingNumber!,
-        carrier: s.carrier as string,
+        carrier: (s.carrier ?? 'other') as CarrierCode,
       }));
 
       const trackingResults = await this.tracker.trackBatch(trackingItems);
@@ -91,6 +95,14 @@ export class SampleShippingSync {
 
             result.updated++;
             result.delivered++;
+
+            // Track in entity memory (L4) — non-blocking
+            onSampleDelivered({
+              creatorId: shipment.creatorId,
+              shipmentId: shipment.id,
+              setType: shipment.setType,
+              skuList: (shipment.skuList as string[]) ?? [],
+            }).catch(() => {});
           } else if (['failed_attempt', 'exception', 'returned'].includes(tracking.current_status)) {
             result.exceptions++;
           }

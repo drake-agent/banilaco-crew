@@ -9,7 +9,8 @@ import { db } from '@/db';
 import { creators } from '@/db/schema/creators';
 import { contentTracking } from '@/db/schema/content';
 import { pinkLeagueSeasons, pinkLeagueEntries, pinkLeagueDailySnapshots } from '@/db/schema/league';
-import { eq, and, gte, desc, sql, asc } from 'drizzle-orm';
+import { collabDuos } from '@/db/schema/collab';
+import { eq, and, or, gte, desc, sql, asc } from 'drizzle-orm';
 
 // Scoring weights
 const WEIGHT_GMV = 1.0;
@@ -62,13 +63,14 @@ export async function takeDailySnapshot(seasonId: string): Promise<{
 }> {
   const today = new Date().toISOString().split('T')[0];
 
-  // Get all entries for this season
+  // Get all entries for this season (include carry-over multiplier)
   const entries = await db
     .select({
       entryId: pinkLeagueEntries.id,
       creatorId: pinkLeagueEntries.creatorId,
       monthlyGmv: creators.monthlyGmv,
       followerCount: creators.followerCount,
+      seasonStartMultiplier: pinkLeagueEntries.seasonStartMultiplier,
     })
     .from(pinkLeagueEntries)
     .innerJoin(creators, eq(pinkLeagueEntries.creatorId, creators.id))
@@ -117,6 +119,32 @@ export async function takeDailySnapshot(seasonId: string): Promise<{
       shares: contentAgg?.totalShares ?? 0,
       followerCount: entry.followerCount ?? 1,
     });
+
+    // Apply Collab Duo boost: sum all verified collab boosts for this season
+    const [collabAgg] = await db
+      .select({ totalBoost: sql<number>`COALESCE(SUM(${collabDuos.scoreBoostPct}::numeric), 0)` })
+      .from(collabDuos)
+      .where(
+        and(
+          or(
+            eq(collabDuos.initiatorId, entry.creatorId),
+            eq(collabDuos.partnerId, entry.creatorId),
+          ),
+          eq(collabDuos.seasonId, seasonId),
+          eq(collabDuos.status, 'verified'),
+        ),
+      );
+
+    const collabBoostPct = collabAgg?.totalBoost ?? 0;
+    if (collabBoostPct > 0) {
+      score.totalPinkScore = Math.round(score.totalPinkScore * (1 + collabBoostPct) * 100) / 100;
+    }
+
+    // Apply season carry-over multiplier (from previous season performance)
+    const startMultiplier = parseFloat(entry.seasonStartMultiplier ?? '1.00');
+    if (startMultiplier > 1) {
+      score.totalPinkScore = Math.round(score.totalPinkScore * startMultiplier * 100) / 100;
+    }
 
     scored.push({ entryId: entry.entryId, creatorId: entry.creatorId, score });
   }

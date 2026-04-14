@@ -54,6 +54,13 @@ interface CreatorData {
     gmvProgress: { current: number; target: number; pct: number };
     overallPct: number;
   } | null;
+  countdown: {
+    nextTier: string;
+    nextTierEmoji: string;
+    remaining: string;
+    overallPct: number;
+    display: string | null;
+  } | null;
 }
 
 export default function MyPerformance() {
@@ -97,7 +104,7 @@ export default function MyPerformance() {
     );
   }
 
-  const { creator, stats, streak, onboarding, tierProgress } = data;
+  const { creator, stats, streak, onboarding, tierProgress, countdown } = data;
   const showOnboarding = !onboarding.isComplete;
 
   return (
@@ -210,6 +217,32 @@ export default function MyPerformance() {
                     />
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Public Countdown — Goal Gradient */}
+          {countdown?.display && (
+            <div className="bg-linear-to-r from-amber-50 to-orange-50 rounded-xl border-2 border-amber-200 p-5 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="text-4xl">{countdown.nextTierEmoji}</div>
+                <div>
+                  <p className="text-sm font-bold text-amber-900">{countdown.display}</p>
+                  <p className="text-xs text-amber-700 mt-0.5">Keep going — you&apos;re {countdown.overallPct}% there!</p>
+                </div>
+              </div>
+              <div className="w-20 h-20 relative">
+                <svg viewBox="0 0 36 36" className="w-20 h-20 -rotate-90">
+                  <circle cx="18" cy="18" r="15.5" fill="none" stroke="#fde68a" strokeWidth="3" />
+                  <circle
+                    cx="18" cy="18" r="15.5" fill="none" stroke="#f59e0b" strokeWidth="3"
+                    strokeDasharray={`${countdown.overallPct} ${100 - countdown.overallPct}`}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-sm font-bold text-amber-800">
+                  {countdown.overallPct}%
+                </span>
               </div>
             </div>
           )}

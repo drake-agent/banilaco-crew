@@ -55,8 +55,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.userId as string;
-        (session.user as Record<string, unknown>).role = token.role;
-        (session.user as Record<string, unknown>).discordId = token.discordId;
+        (session.user as unknown as Record<string, unknown>).role = token.role;
+        (session.user as unknown as Record<string, unknown>).discordId = token.discordId;
       }
       return session;
     },

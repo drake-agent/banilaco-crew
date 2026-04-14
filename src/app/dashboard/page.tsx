@@ -28,7 +28,7 @@ import {
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import type { WeeklyKPI } from '@/types/database';
+import type { WeeklyKpi } from '@/types/database';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { useApi, LoadingSkeleton, ErrorBanner } from '@/hooks/use-api';
@@ -44,10 +44,10 @@ const COLORS = {
 };
 
 const tierColors = {
-  Bronze: '#b45309',
-  Silver: '#9ca3af',
-  Gold: '#f59e0b',
-  Diamond: '#06b6d4',
+  'Pink Petal': '#ec4899',
+  'Pink Rose': '#f43f5e',
+  'Pink Diamond': '#06b6d4',
+  'Pink Crown': '#f59e0b',
 };
 
 function StatCard({
@@ -87,17 +87,17 @@ export default function DashboardPage() {
   // Derive stats from API response
   const latestWeek = kpiData?.data?.[kpiData.data.length - 1];
   const mockStats = {
-    totalAffiliates: latestWeek?.cumulative_affiliates || 0,
-    weeklyNetIncrease: latestWeek?.weekly_net_increase || 0,
-    monthlyGMV: latestWeek?.monthly_gmv || 0,
-    weeksTo30k: latestWeek?.weeks_to_30k || 0,
+    totalAffiliates: latestWeek?.cumulativeAffiliates || 0,
+    weeklyNetIncrease: latestWeek?.netIncrease || 0,
+    monthlyGMV: latestWeek?.monthlyGmv || 0,
+    weeksTo30k: latestWeek?.weeksTo30k || 0,
   };
 
   // Progress data from all weeks
   const progressData = (kpiData?.data || []).map(
-    (w: WeeklyKPI, idx: number) => ({
-      week: `Week ${w.week_number || idx + 1}`,
-      affiliates: w.cumulative_affiliates,
+    (w: WeeklyKpi, idx: number) => ({
+      week: `Week ${idx + 1}`,
+      affiliates: w.cumulativeAffiliates,
       target: 3750 * (idx + 1),
     })
   );
@@ -112,26 +112,26 @@ export default function DashboardPage() {
 
   // Channel mix from latest week
   const channelMixData = latestWeek ? [
-    { name: 'Open Collab', value: latestWeek.open_collab_new || 0, percentage: 0 },
-    { name: 'DM Outreach', value: latestWeek.dm_outreach_new || 0, percentage: 0 },
-    { name: 'MCN', value: latestWeek.mcn_new || 0, percentage: 0 },
-    { name: 'Buyer→Creator', value: latestWeek.buyer_to_creator_new || 0, percentage: 0 },
+    { name: 'Open Collab', value: latestWeek.openCollabNew || 0, percentage: 0 },
+    { name: 'DM Outreach', value: latestWeek.dmOutreachNew || 0, percentage: 0 },
+    { name: 'MCN', value: latestWeek.mcnNew || 0, percentage: 0 },
+    { name: 'Buyer→Creator', value: latestWeek.buyerToCreatorNew || 0, percentage: 0 },
   ].map((ch, _, arr) => {
     const total = arr.reduce((s, c) => s + c.value, 0);
     return { ...ch, percentage: total > 0 ? Math.round((ch.value / total) * 100) : 0 };
   }) : [];
 
-  // Tier distribution - needs separate query, use summary from KPI for now
+  // Tier distribution — STRUCT-2 FIX: use actual pink tier names from DB
   const tierDistribution = kpiData?.summary ? [
-    { tier: 'Bronze', count: kpiData.summary.tierBreakdown?.bronze || 0, percentage: 0 },
-    { tier: 'Silver', count: kpiData.summary.tierBreakdown?.silver || 0, percentage: 0 },
-    { tier: 'Gold', count: kpiData.summary.tierBreakdown?.gold || 0, percentage: 0 },
-    { tier: 'Diamond', count: kpiData.summary.tierBreakdown?.diamond || 0, percentage: 0 },
+    { tier: 'Pink Petal', count: kpiData.summary.tierBreakdown?.pink_petal || 0, percentage: 0 },
+    { tier: 'Pink Rose', count: kpiData.summary.tierBreakdown?.pink_rose || 0, percentage: 0 },
+    { tier: 'Pink Diamond', count: kpiData.summary.tierBreakdown?.pink_diamond || 0, percentage: 0 },
+    { tier: 'Pink Crown', count: kpiData.summary.tierBreakdown?.pink_crown || 0, percentage: 0 },
   ] : [
-    { tier: 'Bronze', count: 0, percentage: 60 },
-    { tier: 'Silver', count: 0, percentage: 30 },
-    { tier: 'Gold', count: 0, percentage: 8 },
-    { tier: 'Diamond', count: 0, percentage: 2 },
+    { tier: 'Pink Petal', count: 0, percentage: 60 },
+    { tier: 'Pink Rose', count: 0, percentage: 30 },
+    { tier: 'Pink Diamond', count: 0, percentage: 8 },
+    { tier: 'Pink Crown', count: 0, percentage: 2 },
   ];
 
   // Recent activity - static for now (would need an activity log table)
@@ -162,7 +162,7 @@ export default function DashboardPage() {
       {/* Page Header */}
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600 mt-1">Welcome to Banilaco Crew admin</p>
+        <p className="text-gray-600 mt-1">Welcome to BANILACO SQUAD admin</p>
       </div>
 
       {/* Stat Cards */}
@@ -321,10 +321,10 @@ export default function DashboardPage() {
                 formatter={(value) => `${value} creators`}
               />
               <Bar dataKey="count" radius={[8, 8, 0, 0]}>
-                <Cell fill={tierColors.Bronze} />
-                <Cell fill={tierColors.Silver} />
-                <Cell fill={tierColors.Gold} />
-                <Cell fill={tierColors.Diamond} />
+                <Cell fill={tierColors['Pink Petal']} />
+                <Cell fill={tierColors['Pink Rose']} />
+                <Cell fill={tierColors['Pink Diamond']} />
+                <Cell fill={tierColors['Pink Crown']} />
               </Bar>
             </BarChart>
           </ResponsiveContainer>

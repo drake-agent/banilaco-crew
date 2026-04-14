@@ -25,7 +25,7 @@ function checkRateLimit(ip: string): boolean {
   const entry = rateLimitMap.get(ip);
 
   if (rateLimitMap.size > 10000) {
-    for (const [key, val] of rateLimitMap.entries()) {
+    for (const [key, val] of Array.from(rateLimitMap.entries())) {
       if (val.resetAt < now) rateLimitMap.delete(key);
     }
   }

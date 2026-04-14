@@ -23,6 +23,7 @@ import { handleMeCommand } from './commands/me';
 import { handleRankingCommand } from './commands/ranking';
 import { handleCompleteCommand } from './commands/complete';
 import { handleLinkCommand } from './commands/link';
+import { handleSquadCommand } from './commands/squad';
 
 const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN!;
 const CLIENT_ID = process.env.DISCORD_CLIENT_ID!;
@@ -130,6 +131,9 @@ client.on('interactionCreate', async (interaction: Interaction) => {
         break;
       case 'link':
         await handleLinkCommand(interaction);
+        break;
+      case 'squad':
+        await handleSquadCommand(interaction);
         break;
       default:
         await interaction.reply({ content: '알 수 없는 명령입니다.', ephemeral: true });

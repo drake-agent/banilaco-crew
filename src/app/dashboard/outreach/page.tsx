@@ -191,7 +191,7 @@ export default function OutreachPipelinePage() {
   // Filter records
   const filteredRecords = mockOutreachRecords.filter((record) => {
     const statusMatch = filterStatus === 'all' || record.status === filterStatus;
-    const tierMatch = filterTier === 'all' || record.outreach_tier === filterTier;
+    const tierMatch = filterTier === 'all' || record.outreachTier === filterTier;
     return statusMatch && tierMatch;
   });
 
@@ -494,18 +494,18 @@ export default function OutreachPipelinePage() {
                     >
                       <td className="py-3 px-4">
                         <span className="font-medium text-gray-900">
-                          {record.tiktok_handle}
+                          {record.tiktokHandle}
                         </span>
                       </td>
-                      <td className="py-3 px-4 text-gray-700">{record.display_name}</td>
+                      <td className="py-3 px-4 text-gray-700">{record.displayName}</td>
                       <td className="py-3 px-4">
                         <Badge
                           className={cn(
                             'text-xs font-semibold',
-                            tierBadgeColor(record.outreach_tier)
+                            tierBadgeColor(record.outreachTier ?? 'tier_b')
                           )}
                         >
-                          {record.outreach_tier === 'tier_a' ? 'Tier A' : 'Tier B'}
+                          {record.outreachTier === 'tier_a' ? 'Tier A' : 'Tier B'}
                         </Badge>
                       </td>
                       <td className="py-3 px-4">
@@ -515,8 +515,8 @@ export default function OutreachPipelinePage() {
                             colors.badge
                           )}
                         >
-                          {record.status.replace('_', ' ').charAt(0).toUpperCase() +
-                            record.status
+                          {(record.status ?? 'identified').replace('_', ' ').charAt(0).toUpperCase() +
+                            (record.status ?? 'identified')
                               .replace('_', ' ')
                               .slice(1)}
                         </Badge>
@@ -525,15 +525,15 @@ export default function OutreachPipelinePage() {
                         {record.channel ? record.channel.replace('_', ' ') : '-'}
                       </td>
                       <td className="py-3 px-4 text-gray-900 font-medium text-xs">
-                        {record.source_competitor}
+                        {record.sourceBrand ?? '-'}
                       </td>
                       <td className="py-3 px-4 text-gray-700">
-                        {(record.follower_count / 1000).toFixed(0)}K
+                        {((record.followerCount ?? 0) / 1000).toFixed(0)}K
                       </td>
                       <td className="py-3 px-4 text-gray-700 text-xs">
-                        {record.dm_sent_at || '-'}
+                        {record.dmSentAt ? new Date(record.dmSentAt).toLocaleDateString() : '-'}
                       </td>
-                      <td className="py-3 px-4 text-gray-700 text-xs">{record.assigned_to}</td>
+                      <td className="py-3 px-4 text-gray-700 text-xs">-</td>
                       <td className="py-3 px-4">
                         <div className="flex items-center justify-center gap-1">
                           <button
@@ -563,7 +563,7 @@ export default function OutreachPipelinePage() {
                                 Template Version
                               </p>
                               <p className="text-sm text-gray-900 mt-1">
-                                {record.dm_template_version || '-'}
+                                -
                               </p>
                             </div>
                             <div>
@@ -571,7 +571,7 @@ export default function OutreachPipelinePage() {
                                 Responded At
                               </p>
                               <p className="text-sm text-gray-900 mt-1">
-                                {record.responded_at || '-'}
+                                {record.respondedAt ? new Date(record.respondedAt).toLocaleDateString() : '-'}
                               </p>
                             </div>
                             <div>
@@ -579,7 +579,7 @@ export default function OutreachPipelinePage() {
                                 Converted At
                               </p>
                               <p className="text-sm text-gray-900 mt-1">
-                                {record.converted_at || '-'}
+                                {record.convertedAt ? new Date(record.convertedAt).toLocaleDateString() : '-'}
                               </p>
                             </div>
                             <div>
@@ -587,7 +587,7 @@ export default function OutreachPipelinePage() {
                                 Competitor GMV
                               </p>
                               <p className="text-sm text-gray-900 mt-1">
-                                ${(record.competitor_gmv / 1000).toFixed(0)}K
+                                -
                               </p>
                             </div>
 

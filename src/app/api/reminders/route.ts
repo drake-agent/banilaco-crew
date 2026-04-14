@@ -7,9 +7,14 @@ import { verifyAdmin, verifyCronAuth } from '@/lib/auth';
 import { eq, and, isNull, isNotNull, sql, lte } from 'drizzle-orm';
 
 /**
- * GET /api/reminders — List samples needing reminders
+ * GET /api/reminders — List samples needing reminders (admin) or process (cron)
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // CFG-2 FIX: Support Vercel Cron auth (GET with CRON_SECRET)
+  if (verifyCronAuth(request)) {
+    return processCronReminders();
+  }
+
   const adminResult = await verifyAdmin();
   if (adminResult.error) return adminResult.error;
 
@@ -66,6 +71,64 @@ export async function GET() {
 }
 
 /**
+ * Shared reminder processing logic (used by both cron GET and POST action=process)
+ */
+async function processCronReminders(): Promise<NextResponse> {
+  const now = new Date();
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000);
+
+  let processed = 0;
+
+  // Auto-detect content posted
+  const deliveredShipments = await db
+    .select({
+      id: sampleShipments.id,
+      creatorId: sampleShipments.creatorId,
+      deliveredAt: sampleShipments.deliveredAt,
+    })
+    .from(sampleShipments)
+    .where(
+      sql`${sampleShipments.status} IN ('delivered', 'reminder_1', 'reminder_2') AND ${sampleShipments.deliveredAt} IS NOT NULL`,
+    );
+
+  for (const shipment of deliveredShipments) {
+    const [content] = await db
+      .select({ id: contentTracking.id })
+      .from(contentTracking)
+      .where(
+        and(
+          eq(contentTracking.creatorId, shipment.creatorId),
+          sql`${contentTracking.postedAt} >= ${shipment.deliveredAt}`,
+        ),
+      )
+      .limit(1);
+
+    if (content) {
+      await db.update(sampleShipments).set({
+        status: 'content_posted',
+        contentPostedAt: now,
+        updatedAt: now,
+      }).where(eq(sampleShipments.id, shipment.id));
+      processed++;
+    }
+  }
+
+  // Mark 14+ day no-response
+  await db.update(sampleShipments).set({
+    status: 'no_response',
+    updatedAt: now,
+  }).where(
+    and(
+      eq(sampleShipments.status, 'reminder_2'),
+      isNotNull(sampleShipments.deliveredAt),
+      lte(sampleShipments.deliveredAt, fourteenDaysAgo),
+    ),
+  );
+
+  return NextResponse.json({ processed, message: 'Reminders processed' });
+}
+
+/**
  * POST /api/reminders — Process reminders (Cron or manual)
  */
 export async function POST(request: NextRequest) {
@@ -73,66 +136,10 @@ export async function POST(request: NextRequest) {
   const { action } = body;
 
   if (action === 'process') {
-    // Cron auth
     if (!verifyCronAuth(request)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-
-    const now = new Date();
-    const fiveDaysAgo = new Date(now.getTime() - 5 * 86400000);
-    const tenDaysAgo = new Date(now.getTime() - 10 * 86400000);
-    const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000);
-
-    let processed = 0;
-
-    // Auto-detect content posted
-    const deliveredShipments = await db
-      .select({
-        id: sampleShipments.id,
-        creatorId: sampleShipments.creatorId,
-        deliveredAt: sampleShipments.deliveredAt,
-      })
-      .from(sampleShipments)
-      .where(
-        sql`${sampleShipments.status} IN ('delivered', 'reminder_1', 'reminder_2') AND ${sampleShipments.deliveredAt} IS NOT NULL`,
-      );
-
-    for (const shipment of deliveredShipments) {
-      // Check if creator posted content after delivery
-      const [content] = await db
-        .select({ id: contentTracking.id })
-        .from(contentTracking)
-        .where(
-          and(
-            eq(contentTracking.creatorId, shipment.creatorId),
-            sql`${contentTracking.postedAt} >= ${shipment.deliveredAt}`,
-          ),
-        )
-        .limit(1);
-
-      if (content) {
-        await db.update(sampleShipments).set({
-          status: 'content_posted',
-          contentPostedAt: now,
-          updatedAt: now,
-        }).where(eq(sampleShipments.id, shipment.id));
-        processed++;
-      }
-    }
-
-    // Mark 14+ day no-response
-    await db.update(sampleShipments).set({
-      status: 'no_response',
-      updatedAt: now,
-    }).where(
-      and(
-        eq(sampleShipments.status, 'reminder_2'),
-        isNotNull(sampleShipments.deliveredAt),
-        lte(sampleShipments.deliveredAt, fourteenDaysAgo),
-      ),
-    );
-
-    return NextResponse.json({ processed, message: 'Reminders processed' });
+    return processCronReminders();
   }
 
   // Manual send (admin only)

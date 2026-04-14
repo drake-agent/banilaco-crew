@@ -3,6 +3,7 @@ import { db } from '@/db';
 import { creators } from '@/db/schema/creators';
 import { discordLinks } from '@/db/schema/discord';
 import { eq } from 'drizzle-orm';
+import { initCreatorEntity } from '@/agent/memory/entity';
 
 export async function handleLinkCommand(interaction: ChatInputCommandInteraction) {
   await interaction.deferReply({ ephemeral: true });
@@ -23,9 +24,9 @@ export async function handleLinkCommand(interaction: ChatInputCommandInteraction
     return;
   }
 
-  // Find creator by TikTok handle
+  // Find creator by TikTok handle (need full row for entity init)
   const [creator] = await db
-    .select({ id: creators.id, tiktokHandle: creators.tiktokHandle, displayName: creators.displayName })
+    .select()
     .from(creators)
     .where(eq(creators.tiktokHandle, handle))
     .limit(1);
@@ -38,13 +39,49 @@ export async function handleLinkCommand(interaction: ChatInputCommandInteraction
     return;
   }
 
-  // Create link
+  // SEC-2: Reverse-link check — prevent multiple discord accounts linking to same creator
+  const existingCreatorLink = await db
+    .select({ id: discordLinks.id })
+    .from(discordLinks)
+    .where(eq(discordLinks.creatorId, creator.id))
+    .limit(1);
+
+  if (existingCreatorLink.length > 0) {
+    await interaction.editReply('⚠️ 이 크리에이터 계정은 이미 다른 Discord 계정에 연동되어 있습니다.');
+    return;
+  }
+
+  // Create discord link
   await db.insert(discordLinks).values({
     creatorId: creator.id,
     discordUserId: interaction.user.id,
     discordUsername: interaction.user.username,
     isVerified: true,
   });
+
+  // Update onboarding step (step 1 = Discord connected)
+  if ((creator.onboardingStep ?? 0) < 1) {
+    await db
+      .update(creators)
+      .set({ onboardingStep: 1 })
+      .where(eq(creators.id, creator.id));
+  }
+
+  // Initialize L4 entity memory — creator node + relationships
+  try {
+    await initCreatorEntity({
+      creatorId: creator.id,
+      tiktokHandle: creator.tiktokHandle,
+      displayName: creator.displayName,
+      tier: creator.tier,
+      squadLeaderId: creator.squadLeaderId,
+      squadCode: creator.squadCode,
+      tags: (creator.tags as string[]) ?? [],
+    });
+  } catch (err) {
+    // Non-blocking — entity init failure shouldn't block linking
+    console.error('[Link] Entity init failed:', err);
+  }
 
   const embed = new EmbedBuilder()
     .setTitle('🔗 계정 연동 완료!')

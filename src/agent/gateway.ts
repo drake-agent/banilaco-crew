@@ -57,7 +57,7 @@ export async function processMessage(message: Message): Promise<void> {
   // ④ Agent Runtime — Claude API call
   try {
     // Show typing indicator
-    await message.channel.sendTyping();
+    if ('sendTyping' in message.channel) await message.channel.sendTyping();
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -105,6 +105,7 @@ export async function processMessage(message: Message): Promise<void> {
 
 /**
  * Check and update rate limit for a user.
+ * Cleans up expired entries to prevent memory leaks.
  */
 function isRateLimited(userId: string): boolean {
   const now = Date.now();
@@ -112,6 +113,13 @@ function isRateLimited(userId: string): boolean {
 
   if (!limit || now > limit.resetAt) {
     rateLimits.set(userId, { count: 1, resetAt: now + RATE_WINDOW });
+
+    // Periodic cleanup: remove expired entries every 100 calls
+    if (rateLimits.size > 100) {
+      for (const [key, val] of Array.from(rateLimits)) {
+        if (now > val.resetAt) rateLimits.delete(key);
+      }
+    }
     return false;
   }
 

@@ -122,7 +122,7 @@ export class WorkingMemory {
    * Clear all conversations (for testing/shutdown).
    */
   clear(): void {
-    for (const [, state] of this.store) {
+    for (const [, state] of Array.from(this.store)) {
       if (state.timer) clearTimeout(state.timer);
     }
     this.store.clear();

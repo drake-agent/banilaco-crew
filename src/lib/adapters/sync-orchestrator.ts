@@ -10,6 +10,7 @@ import { outreachPipeline } from '@/db/schema/outreach';
 import { cronSyncState } from '@/db/schema/sync';
 import { eq, asc, sql, isNull, inArray } from 'drizzle-orm';
 import { calculateTier } from '@/lib/tier/auto-update';
+import { onNewContentDetected } from '@/agent/memory/creator-sync';
 import type { PinkTier } from '@/db/schema/creators';
 import type {
   ITikTokShopAdapter,
@@ -133,6 +134,20 @@ export class DataSyncOrchestrator {
             },
           });
           totalVideos++;
+
+          // Track in entity memory (L4) — non-blocking
+          onNewContentDetected({
+            creatorId: creator.id,
+            videoId: video.video_id,
+            videoUrl: `https://www.tiktok.com/@${video.tiktok_handle}/video/${video.video_id}`,
+            contentType: null,
+            hookType: null,
+            views: video.view_count,
+            likes: video.like_count,
+            comments: video.comment_count,
+            shares: video.share_count,
+            skuFeatured: [],
+          }).catch(() => {});
         }
 
         if (videos.length > 0) {
@@ -246,7 +261,6 @@ export class DataSyncOrchestrator {
               const tierResult = calculateTier(creator.tier as PinkTier, {
                 missionCount: creator.missionCount ?? 0,
                 monthlyGmv: newMonthlyGmv,
-                aiProfileCompleted: creator.aiProfileCompleted ?? false,
               });
 
               await db.update(creators).set({

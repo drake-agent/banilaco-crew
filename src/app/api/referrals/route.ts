@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
           status: 'pending',
         })
         .onConflictDoUpdate({
-          target: [squadBonusLog.leaderId, squadBonusLog.memberId, sql`period`],
+          target: [squadBonusLog.leaderId, squadBonusLog.memberId, squadBonusLog.period],
           set: {
             memberGmv: memberGmv.toString(),
             bonusAmount: bonusAmount.toString(),

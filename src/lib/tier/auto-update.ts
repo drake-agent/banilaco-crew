@@ -3,7 +3,6 @@ import { type PinkTier, TIER_CONFIG } from '@/db/schema/creators';
 interface TierInput {
   missionCount: number;
   monthlyGmv: number;
-  aiProfileCompleted: boolean;
 }
 
 interface TierResult {

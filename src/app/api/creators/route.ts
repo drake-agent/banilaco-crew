@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
       sql`(${ilike(creators.tiktokHandle, `%${sanitized}%`)} OR ${ilike(creators.displayName, `%${sanitized}%`)} OR ${ilike(creators.email, `%${sanitized}%`)})`,
     );
   }
-  if (tier) conditions.push(eq(creators.tier, tier));
+  if (tier) conditions.push(eq(creators.tier, tier as typeof creators.tier.enumValues[number]));
   if (status) conditions.push(eq(creators.status, status as typeof creators.status.enumValues[number]));
   if (source) conditions.push(eq(creators.source, source as typeof creators.source.enumValues[number]));
 

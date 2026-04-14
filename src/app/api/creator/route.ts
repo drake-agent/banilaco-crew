@@ -101,7 +101,6 @@ export async function GET() {
 
   const hasDiscord = !!discordLink;
   const hasTiktok = !!creator.tiktokHandle;
-  const hasAiProfile = creator.aiProfileCompleted ?? false;
   const hasFirstMission = (creator.missionCount ?? 0) > 0;
   const hasFirstContent = (creator.totalContentCount ?? 0) > 0;
 
@@ -110,14 +109,36 @@ export async function GET() {
     checklist: [
       { key: 'discord', label: 'Connect Discord', done: hasDiscord, icon: '💬' },
       { key: 'tiktok', label: 'Link TikTok Account', done: hasTiktok, icon: '🎵' },
-      { key: 'profile', label: 'Complete AI Profile', done: hasAiProfile, icon: '🤖' },
       { key: 'mission', label: 'Complete First Mission', done: hasFirstMission, icon: '🎯' },
       { key: 'content', label: 'Post First Content', done: hasFirstContent, icon: '🎬' },
     ],
-    completedCount: [hasDiscord, hasTiktok, hasAiProfile, hasFirstMission, hasFirstContent].filter(Boolean).length,
-    totalCount: 5,
-    isComplete: hasDiscord && hasTiktok && hasAiProfile && hasFirstMission && hasFirstContent,
+    completedCount: [hasDiscord, hasTiktok, hasFirstMission, hasFirstContent].filter(Boolean).length,
+    totalCount: 4,
+    isComplete: hasDiscord && hasTiktok && hasFirstMission && hasFirstContent,
   };
+
+  // Public Countdown — how many missions / $ GMV until next tier
+  let countdown = null;
+  if (tierProgress) {
+    const parts: string[] = [];
+    if (tierProgress.missionProgress) {
+      const remaining = tierProgress.missionProgress.target - tierProgress.missionProgress.current;
+      if (remaining > 0) parts.push(`${remaining} missions`);
+    }
+    const gmvRemaining = tierProgress.gmvProgress.target - tierProgress.gmvProgress.current;
+    if (gmvRemaining > 0) parts.push(`$${gmvRemaining.toLocaleString()} GMV`);
+
+    countdown = {
+      nextTier: tierProgress.nextTierLabel,
+      nextTierEmoji: tierProgress.nextTierEmoji,
+      remaining: parts.join(' or '),
+      overallPct: tierProgress.overallPct,
+      // Formatted for Discord/profile display
+      display: parts.length > 0
+        ? `${tierProgress.nextTierEmoji} ${tierProgress.nextTierLabel}까지 ${parts.join(' or ')} 남음`
+        : null,
+    };
+  }
 
   return NextResponse.json({
     creator: {
@@ -149,5 +170,6 @@ export async function GET() {
     streak,
     onboarding,
     tierProgress,
+    countdown,
   });
 }

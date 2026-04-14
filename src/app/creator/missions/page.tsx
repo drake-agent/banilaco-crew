@@ -12,6 +12,7 @@ interface MissionData {
   rewardAmount: string | null;
   scoreAmount: number | null;
   completed: boolean;
+  isMystery: boolean;
 }
 
 interface MissionsResponse {
@@ -30,6 +31,8 @@ interface CompletionResult {
     scoreEarned: number;
     baseReward: number;
     baseScore: number;
+    isMystery: boolean;
+    mystery: { multiplier: number; label: string; emoji: string } | null;
   };
   streak: {
     current: number;
@@ -192,37 +195,51 @@ export default function MissionsPage() {
                 className={`bg-white rounded-xl border-2 shadow-sm p-6 ${
                   mission.completed
                     ? 'border-green-200 bg-green-50 opacity-75'
-                    : 'border-gray-200 hover:border-pink-200'
+                    : mission.isMystery
+                      ? 'border-purple-300 bg-linear-to-r from-purple-50 to-indigo-50 hover:border-purple-400'
+                      : 'border-gray-200 hover:border-pink-200'
                 } transition-all`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
-                      <span className="text-3xl">{config.emoji}</span>
+                      <span className="text-3xl">{mission.isMystery ? '🎰' : config.emoji}</span>
                       <div>
-                        <span className={`text-xs font-semibold px-2 py-1 rounded-full border ${config.color}`}>
-                          {config.label}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-semibold px-2 py-1 rounded-full border ${config.color}`}>
+                            {config.label}
+                          </span>
+                          {mission.isMystery && (
+                            <span className="text-xs font-bold px-2 py-1 rounded-full bg-purple-100 border border-purple-300 text-purple-700 animate-pulse">
+                              MYSTERY 1x~5x
+                            </span>
+                          )}
+                        </div>
                         <h3 className="text-lg font-bold text-gray-900 mt-1">
-                          {mission.title}
+                          {mission.isMystery && !mission.completed ? '??? Mystery Mission' : mission.title}
                         </h3>
                       </div>
                     </div>
-                    {mission.description && (
+                    {!mission.isMystery && mission.description && (
                       <p className="text-gray-600 text-sm ml-12 mb-4">{mission.description}</p>
+                    )}
+                    {mission.isMystery && !mission.completed && (
+                      <p className="text-purple-600 text-sm ml-12 mb-4">
+                        Complete to reveal your reward multiplier!
+                      </p>
                     )}
                     <div className="flex gap-4 ml-12 text-sm">
                       <span className="font-semibold text-pink-600">
-                        💰 +${reward} Flat Fee
-                        {multiplier > 1 && (
+                        💰 {mission.isMystery && !mission.completed ? '?x ' : '+$'}{mission.isMystery && !mission.completed ? `$${reward}` : `${reward}`} Flat Fee
+                        {multiplier > 1 && !mission.isMystery && (
                           <span className="text-orange-500 ml-1">
                             (${(reward * multiplier).toFixed(2)} with streak)
                           </span>
                         )}
                       </span>
                       <span className="font-semibold text-purple-600">
-                        ⭐ +{score} Score
-                        {multiplier > 1 && (
+                        ⭐ {mission.isMystery && !mission.completed ? '?x ' : '+'}{mission.isMystery && !mission.completed ? `${score}` : `${score}`} Score
+                        {multiplier > 1 && !mission.isMystery && (
                           <span className="text-orange-500 ml-1">
                             ({Math.round(score * multiplier)} with streak)
                           </span>
@@ -289,6 +306,7 @@ function CelebrationModal({
   const hasMultiplier = streak.multiplier > 1;
   const hasMilestone = !!streak.milestone;
   const hasTierUp = creator.tierChanged;
+  const hasMystery = completion.isMystery && completion.mystery;
 
   return (
     <div
@@ -302,19 +320,34 @@ function CelebrationModal({
         {/* Header */}
         <div className="bg-linear-to-r from-pink-500 via-rose-500 to-purple-500 p-6 text-white text-center">
           <p className="text-5xl mb-2">
-            {hasTierUp ? '🎉🏆🎉' : hasMilestone ? streak.milestone!.emoji : '✅'}
+            {hasTierUp ? '🎉🏆🎉' : hasMystery ? completion.mystery!.emoji : hasMilestone ? streak.milestone!.emoji : '✅'}
           </p>
           <h2 className="text-xl font-bold">
             {hasTierUp
               ? 'Tier Upgrade!'
-              : hasMilestone
-                ? `${streak.milestone!.label} Unlocked!`
-                : 'Mission Complete!'}
+              : hasMystery
+                ? `Mystery Revealed: ${completion.mystery!.label}!`
+                : hasMilestone
+                  ? `${streak.milestone!.label} Unlocked!`
+                  : 'Mission Complete!'}
           </h2>
         </div>
 
         {/* Content */}
         <div className="p-6 space-y-4">
+          {/* Mystery reveal */}
+          {hasMystery && (
+            <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 text-center">
+              <p className="text-3xl mb-1">{completion.mystery!.emoji}</p>
+              <p className="text-lg font-bold text-purple-800">
+                {completion.mystery!.multiplier}x {completion.mystery!.label}!
+              </p>
+              {completion.mystery!.multiplier >= 4 && (
+                <p className="text-sm text-purple-600 mt-1 font-semibold">JACKPOT!</p>
+              )}
+            </div>
+          )}
+
           {/* Mission info */}
           <div className="bg-gray-50 rounded-lg p-4">
             <p className="text-sm font-medium text-gray-600">{completion.missionTitle}</p>

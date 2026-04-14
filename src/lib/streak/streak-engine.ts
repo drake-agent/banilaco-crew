@@ -3,7 +3,10 @@
  *
  * Rules:
  * - Complete at least 1 mission/day to maintain streak
- * - Missing a day resets streak to 0
+ * - Soft reset: missing 1 day drops one milestone tier (not full reset)
+ *   30d→14d, 14d→7d, 7d→3d, 3d→1d
+ * - Missing 2 days drops two tiers
+ * - Missing 3+ days hard-resets to 1
  * - Streak multipliers: 3d=1.2x, 7d=1.5x, 14d=1.8x, 30d=2.0x
  * - Longest streak is tracked permanently for achievements
  */
@@ -95,9 +98,10 @@ export function calculateStreak(
       // Consecutive day — streak continues
       newStreak = currentStreak + 1;
     } else if (diffDays > 1) {
-      // Streak broken
-      newStreak = 1;
-      streakBroken = currentStreak > 0;
+      // Soft reset: drop milestone tiers instead of full reset
+      const daysMissed = diffDays - 1;
+      newStreak = softResetStreak(currentStreak, daysMissed);
+      streakBroken = newStreak < currentStreak;
     } else {
       // Same day or future (shouldn't happen) — keep current
       newStreak = currentStreak;
@@ -120,6 +124,33 @@ export function calculateStreak(
     streakBroken,
     milestone: hitNewMilestone,
   };
+}
+
+/**
+ * Soft reset: drop streak to the start of a lower milestone tier.
+ * - 1 day missed → drop 1 tier (30→14, 14→7, 7→3, 3→1)
+ * - 2 days missed → drop 2 tiers
+ * - 3+ days missed → hard reset to 1
+ */
+function softResetStreak(currentStreak: number, daysMissed: number): number {
+  if (daysMissed >= 3) return 1;
+
+  // Tier thresholds in descending order: [30, 14, 7, 3]
+  const THRESHOLDS = STREAK_MILESTONES.map((m) => m.days).sort((a, b) => b - a);
+
+  // Find which tier index the current streak is in
+  let tierIdx = THRESHOLDS.length; // below all thresholds
+  for (let i = 0; i < THRESHOLDS.length; i++) {
+    if (currentStreak >= THRESHOLDS[i]) {
+      tierIdx = i;
+      break;
+    }
+  }
+
+  // Drop by daysMissed tiers
+  const newIdx = tierIdx + daysMissed;
+  if (newIdx >= THRESHOLDS.length) return 1;
+  return THRESHOLDS[newIdx];
 }
 
 /**

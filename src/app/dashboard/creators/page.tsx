@@ -89,12 +89,12 @@ export default function CreatorsPage() {
 
   // Summary stats
   const activeCreators = creators.filter((c) => c.status === 'active');
-  const totalGMV = creators.reduce((sum, c) => sum + c.monthly_gmv, 0);
+  const totalGMV = creators.reduce((sum, c) => sum + parseFloat(c.monthlyGmv ?? '0'), 0);
   const averageGMVPerCreator =
     activeCreators.length > 0 ? totalGMV / activeCreators.length : 0;
   const topPerformer = creators.reduce((max, creator) =>
-    creator.monthly_gmv > max.monthly_gmv ? creator : max,
-    creators[0] || { monthly_gmv: 0, display_name: 'N/A' } as any
+    parseFloat(creator.monthlyGmv ?? '0') > parseFloat(max.monthlyGmv ?? '0') ? creator : max,
+    creators[0] || { monthlyGmv: '0', displayName: 'N/A' } as any
   );
 
   // Handle form submission
@@ -197,9 +197,9 @@ export default function CreatorsPage() {
               Top Performer GMV
             </p>
             <p className="mt-2 text-3xl font-bold text-indigo-600">
-              {formatCurrency(topPerformer.monthly_gmv || 0)}
+              {formatCurrency(parseFloat(topPerformer.monthlyGmv ?? '0'))}
             </p>
-            <p className="text-xs text-slate-500">{topPerformer.display_name || 'N/A'}</p>
+            <p className="text-xs text-slate-500">{topPerformer.displayName || 'N/A'}</p>
           </div>
         </div>
 
@@ -228,10 +228,10 @@ export default function CreatorsPage() {
                 className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
               >
                 <option value="">All Tiers</option>
-                <option value="bronze">Bronze</option>
-                <option value="silver">Silver</option>
-                <option value="gold">Gold</option>
-                <option value="diamond">Diamond</option>
+                <option value="pink_petal">Pink Petal</option>
+                <option value="pink_rose">Pink Rose</option>
+                <option value="pink_diamond">Pink Diamond</option>
+                <option value="pink_crown">Pink Crown</option>
               </select>
             </div>
             <div>
@@ -329,10 +329,10 @@ export default function CreatorsPage() {
                     }`}
                   >
                     <td className="px-6 py-4 text-sm font-medium text-slate-900">
-                      {creator.tiktok_handle}
+                      {creator.tiktokHandle}
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-700">
-                      {creator.display_name}
+                      {creator.displayName}
                     </td>
                     <td className="px-6 py-4">
                       <span
@@ -345,7 +345,7 @@ export default function CreatorsPage() {
                     </td>
                     <td className="px-6 py-4">
                       <span className="inline-block rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
-                        {sourceLabel(creator.source)}
+                        {sourceLabel(creator.source ?? '')}
                       </span>
                     </td>
                     <td className="px-6 py-4">
@@ -358,20 +358,20 @@ export default function CreatorsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right text-sm text-slate-700">
-                      {formatNumber(creator.follower_count)}
+                      {formatNumber(creator.followerCount ?? 0)}
                     </td>
                     <td className="px-6 py-4 text-right text-sm font-semibold text-slate-900">
-                      {formatCurrency(creator.monthly_gmv)}
+                      {formatCurrency(parseFloat(creator.monthlyGmv ?? '0'))}
                     </td>
                     <td className="px-6 py-4 text-right text-sm text-slate-700">
-                      {creator.monthly_content_count}
+                      {creator.monthlyContentCount}
                     </td>
                     <td className="px-6 py-4 text-right text-sm text-slate-700">
-                      {creator.commission_rate}%
+                      {creator.commissionRate}%
                     </td>
                     <td className="px-6 py-4 text-sm text-slate-600">
-                      {creator.last_active_at
-                        ? new Date(creator.last_active_at).toLocaleDateString('en-US', {
+                      {creator.lastActiveAt
+                        ? new Date(creator.lastActiveAt).toLocaleDateString('en-US', {
                             month: 'short',
                             day: 'numeric',
                           })

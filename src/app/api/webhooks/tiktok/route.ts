@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
   const [event] = await db.insert(webhookEvents).values({
     eventType: String(payload.type),
     shopId: payload.shop_id,
-    payload: payload as Record<string, unknown>,
+    payload: payload as unknown as Record<string, unknown>,
     processingStatus: 'pending',
   }).returning();
 

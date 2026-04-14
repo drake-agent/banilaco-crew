@@ -72,6 +72,8 @@ const SET_TYPE_CONFIG: Record<SampleSetType, { label: string; color: string }> =
   hero: { label: 'Hero', color: 'bg-red-500' },
   premium: { label: 'Premium', color: 'bg-purple-500' },
   mini: { label: 'Mini', color: 'bg-blue-500' },
+  full: { label: 'Full', color: 'bg-green-500' },
+  welcome: { label: 'Welcome', color: 'bg-pink-500' },
 };
 
 // ============================================
@@ -87,9 +89,9 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ samples }) => {
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   const totalSentThisWeek = samples.filter(
-    (s) => new Date(s.shipped_at || '') >= weekAgo && s.shipped_at
+    (s) => new Date(s.shippedAt || '') >= weekAgo && s.shippedAt
   ).length;
-  const totalSentCumulative = samples.filter((s) => s.shipped_at).length;
+  const totalSentCumulative = samples.filter((s) => s.shippedAt).length;
   const pendingShipments = samples.filter((s) =>
     ['requested', 'approved'].includes(s.status)
   ).length;
@@ -98,24 +100,24 @@ const SummaryCards: React.FC<SummaryCardsProps> = ({ samples }) => {
       (s.status === 'delivered' ||
         s.status === 'reminder_1' ||
         s.status === 'reminder_2') &&
-      !s.content_posted_at
+      !s.contentPostedAt
   ).length;
   const withContent = samples.filter((s) => s.status === 'content_posted').length;
   const postConversionRate =
-    samples.filter((s) => s.shipped_at).length > 0
-      ? ((withContent / samples.filter((s) => s.shipped_at).length) * 100).toFixed(1)
+    samples.filter((s) => s.shippedAt).length > 0
+      ? ((withContent / samples.filter((s) => s.shippedAt).length) * 100).toFixed(1)
       : '0';
 
   const reminder1Needed = samples.filter((s) => {
-    if (!s.delivered_at) return false;
-    const daysSinceDelivery = (now.getTime() - new Date(s.delivered_at).getTime()) / (1000 * 60 * 60 * 24);
-    return daysSinceDelivery >= 5 && daysSinceDelivery < 10 && !s.content_posted_at;
+    if (!s.deliveredAt) return false;
+    const daysSinceDelivery = (now.getTime() - new Date(s.deliveredAt).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSinceDelivery >= 5 && daysSinceDelivery < 10 && !s.contentPostedAt;
   }).length;
 
   const reminder2Needed = samples.filter((s) => {
-    if (!s.delivered_at) return false;
-    const daysSinceDelivery = (now.getTime() - new Date(s.delivered_at).getTime()) / (1000 * 60 * 60 * 24);
-    return daysSinceDelivery >= 10 && !s.content_posted_at;
+    if (!s.deliveredAt) return false;
+    const daysSinceDelivery = (now.getTime() - new Date(s.deliveredAt).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSinceDelivery >= 10 && !s.contentPostedAt;
   }).length;
 
   const cards = [
@@ -241,11 +243,11 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
   const [creators, setCreators] = useState<Creator[]>([]);
   const [creatorsLoading, setCreatorsLoading] = useState(false);
   const [formData, setFormData] = useState({
-    creator_id: '',
-    set_type: 'hero' as SampleSetType,
+    creatorId: '',
+    setType: 'hero' as SampleSetType,
     skus: '',
-    estimated_cost: '',
-    shipping_cost: '',
+    estimatedCost: '',
+    shippingCost: '',
     notes: '',
   });
 
@@ -272,11 +274,11 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
     // Handle form submission (in real app would save to DB)
     console.log('New shipment:', formData);
     setFormData({
-      creator_id: '',
-      set_type: 'hero',
+      creatorId: '',
+      setType: 'hero',
       skus: '',
-      estimated_cost: '',
-      shipping_cost: '',
+      estimatedCost: '',
+      shippingCost: '',
       notes: '',
     });
     onClose();
@@ -292,9 +294,9 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Creator</label>
             <select
-              value={formData.creator_id}
+              value={formData.creatorId}
               onChange={(e) =>
-                setFormData({ ...formData, creator_id: e.target.value })
+                setFormData({ ...formData, creatorId: e.target.value })
               }
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               required
@@ -302,7 +304,7 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
               <option value="">Select a creator</option>
               {creators.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.display_name} (@{c.tiktok_handle})
+                  {c.displayName} (@{c.tiktokHandle})
                 </option>
               ))}
             </select>
@@ -311,11 +313,11 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Set Type</label>
             <select
-              value={formData.set_type}
+              value={formData.setType}
               onChange={(e) =>
                 setFormData({
                   ...formData,
-                  set_type: e.target.value as SampleSetType,
+                  setType: e.target.value as SampleSetType,
                 })
               }
               className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
@@ -347,8 +349,8 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
               </label>
               <input
                 type="number"
-                value={formData.estimated_cost}
-                onChange={(e) => setFormData({ ...formData, estimated_cost: e.target.value })}
+                value={formData.estimatedCost}
+                onChange={(e) => setFormData({ ...formData, estimatedCost: e.target.value })}
                 placeholder="0.00"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
@@ -359,8 +361,8 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
               </label>
               <input
                 type="number"
-                value={formData.shipping_cost}
-                onChange={(e) => setFormData({ ...formData, shipping_cost: e.target.value })}
+                value={formData.shippingCost}
+                onChange={(e) => setFormData({ ...formData, shippingCost: e.target.value })}
                 placeholder="0.00"
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
               />
@@ -442,7 +444,7 @@ export default function SampleShipmentsPage() {
 
   const filteredSamples = samples.filter((s) => {
     const statusMatch = statusFilter === 'all' || s.status === statusFilter;
-    const typeMatch = setTypeFilter === 'all' || s.set_type === setTypeFilter;
+    const typeMatch = setTypeFilter === 'all' || s.setType === setTypeFilter;
     return statusMatch && typeMatch;
   });
 
@@ -450,13 +452,14 @@ export default function SampleShipmentsPage() {
     setSamples(
       samples.map((s) => {
         if (s.id === shipmentId) {
-          const updated = { ...s, status: newStatus, updated_at: new Date().toISOString() };
+          const now = new Date();
+          const updated = { ...s, status: newStatus, updatedAt: now };
           if (newStatus === 'content_posted') {
-            updated.content_posted_at = new Date().toISOString();
+            updated.contentPostedAt = now;
           } else if (newStatus === 'reminder_1') {
-            updated.reminder_1_sent_at = new Date().toISOString();
+            updated.reminder1SentAt = now;
           } else if (newStatus === 'reminder_2') {
-            updated.reminder_2_sent_at = new Date().toISOString();
+            updated.reminder2SentAt = now;
           }
           return updated;
         }
@@ -469,17 +472,17 @@ export default function SampleShipmentsPage() {
     const now = new Date();
     setSamples(
       samples.map((s) => {
-        if (!s.delivered_at) return s;
+        if (!s.deliveredAt) return s;
         const daysSinceDelivery =
-          (now.getTime() - new Date(s.delivered_at).getTime()) / (1000 * 60 * 60 * 24);
+          (now.getTime() - new Date(s.deliveredAt).getTime()) / (1000 * 60 * 60 * 24);
 
         // Send reminder 1 if 5+ days and no content
-        if (daysSinceDelivery >= 5 && !s.content_posted_at && s.status === 'delivered') {
+        if (daysSinceDelivery >= 5 && !s.contentPostedAt && s.status === 'delivered') {
           return {
             ...s,
             status: 'reminder_1' as SampleStatus,
-            reminder_1_sent_at: now.toISOString(),
-            updated_at: now.toISOString(),
+            reminder1SentAt: now,
+            updatedAt: now,
           };
         }
         return s;
@@ -592,7 +595,7 @@ export default function SampleShipmentsPage() {
               <tbody>
                 {filteredSamples.map((sample, idx) => {
                   const statusConfig = STATUS_CONFIG[sample.status];
-                  const setTypeConfig = SET_TYPE_CONFIG[sample.set_type];
+                  const setTypeConfig = SET_TYPE_CONFIG[sample.setType];
                   const nextStatuses = getNextStatuses(sample.status);
 
                   return (
@@ -605,10 +608,10 @@ export default function SampleShipmentsPage() {
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="font-medium text-gray-900">
-                            @{sample.creator?.tiktok_handle}
+                            @{(sample as any).creator?.tiktokHandle}
                           </span>
                           <span className="text-xs text-gray-600">
-                            {sample.creator?.display_name}
+                            {(sample as any).creator?.displayName}
                           </span>
                         </div>
                       </td>
@@ -630,35 +633,35 @@ export default function SampleShipmentsPage() {
                         <PipelineIndicator status={sample.status} />
                       </td>
                       <td className="px-6 py-4">
-                        {sample.tracking_number ? (
+                        {sample.trackingNumber ? (
                           <a
                             href={`#`}
                             className="text-blue-600 hover:underline font-mono text-xs"
                           >
-                            {sample.tracking_number}
+                            {sample.trackingNumber}
                           </a>
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-xs">
-                        {sample.shipped_at ? (
-                          new Date(sample.shipped_at).toLocaleDateString()
+                        {sample.shippedAt ? (
+                          new Date(sample.shippedAt).toLocaleDateString()
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
                       <td className="px-6 py-4 text-xs">
-                        {sample.delivered_at ? (
-                          new Date(sample.delivered_at).toLocaleDateString()
+                        {sample.deliveredAt ? (
+                          new Date(sample.deliveredAt).toLocaleDateString()
                         ) : (
                           <span className="text-gray-400">—</span>
                         )}
                       </td>
                       <td className="px-6 py-4">
-                        {sample.content_url ? (
+                        {sample.contentUrl ? (
                           <a
-                            href={sample.content_url}
+                            href={sample.contentUrl}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-blue-600 hover:underline text-xs"
@@ -670,8 +673,8 @@ export default function SampleShipmentsPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 font-medium">
-                        {sample.content_gmv > 0 ? (
-                          <span className="text-green-600">${sample.content_gmv.toLocaleString()}</span>
+                        {parseFloat(sample.contentGmv ?? '0') > 0 ? (
+                          <span className="text-green-600">${parseFloat(sample.contentGmv ?? '0').toLocaleString()}</span>
                         ) : (
                           <span className="text-gray-400">$0</span>
                         )}
@@ -699,7 +702,7 @@ export default function SampleShipmentsPage() {
                               </div>
                             </div>
                           </div>
-                          {sample.status === 'delivered' && !sample.content_posted_at && (
+                          {sample.status === 'delivered' && !sample.contentPostedAt && (
                             <button
                               onClick={() => handleStatusChange(sample.id, 'reminder_1')}
                               className="p-2 hover:bg-gray-200 rounded transition-colors text-orange-600 hover:text-orange-700"
@@ -736,7 +739,7 @@ export default function SampleShipmentsPage() {
                 <span className="font-medium">
                   $
                   {samples
-                    .reduce((sum, s) => sum + (s.estimated_cost || 0), 0)
+                    .reduce((sum, s) => sum + parseFloat(s.estimatedCost ?? '0'), 0)
                     .toLocaleString()}
                 </span>
               </div>
@@ -745,7 +748,7 @@ export default function SampleShipmentsPage() {
                 <span className="font-medium">
                   $
                   {samples
-                    .reduce((sum, s) => sum + (s.shipping_cost || 0), 0)
+                    .reduce((sum, s) => sum + parseFloat(s.shippingCost ?? '0'), 0)
                     .toLocaleString()}
                 </span>
               </div>
@@ -754,7 +757,7 @@ export default function SampleShipmentsPage() {
                 <span className="text-blue-600">
                   $
                   {(
-                    samples.reduce((sum, s) => sum + (s.estimated_cost || 0) + (s.shipping_cost || 0), 0)
+                    samples.reduce((sum, s) => sum + parseFloat(s.estimatedCost ?? '0') + parseFloat(s.shippingCost ?? '0'), 0)
                   ).toLocaleString()}
                 </span>
               </div>
@@ -769,7 +772,7 @@ export default function SampleShipmentsPage() {
                 <span className="font-medium text-green-600">
                   $
                   {samples
-                    .reduce((sum, s) => sum + (s.content_gmv || 0), 0)
+                    .reduce((sum, s) => sum + parseFloat(s.contentGmv ?? '0'), 0)
                     .toLocaleString()}
                 </span>
               </div>
@@ -777,10 +780,10 @@ export default function SampleShipmentsPage() {
                 <span className="text-gray-600">Avg per Post:</span>
                 <span className="font-medium">
                   $
-                  {samples.filter((s) => s.content_gmv > 0).length > 0
+                  {samples.filter((s) => parseFloat(s.contentGmv ?? '0') > 0).length > 0
                     ? (
-                        samples.reduce((sum, s) => sum + (s.content_gmv || 0), 0) /
-                        samples.filter((s) => s.content_gmv > 0).length
+                        samples.reduce((sum, s) => sum + parseFloat(s.contentGmv ?? '0'), 0) /
+                        samples.filter((s) => parseFloat(s.contentGmv ?? '0') > 0).length
                       ).toFixed(0)
                     : '0'}
                 </span>
@@ -788,11 +791,11 @@ export default function SampleShipmentsPage() {
               <div className="border-t pt-2 flex justify-between font-bold">
                 <span>ROI:</span>
                 <span className="text-green-600">
-                  {samples.reduce((sum, s) => sum + (s.estimated_cost || 0) + (s.shipping_cost || 0), 0) > 0
+                  {samples.reduce((sum, s) => sum + parseFloat(s.estimatedCost ?? '0') + parseFloat(s.shippingCost ?? '0'), 0) > 0
                     ? (
-                        ((samples.reduce((sum, s) => sum + (s.content_gmv || 0), 0) -
-                          samples.reduce((sum, s) => sum + (s.estimated_cost || 0) + (s.shipping_cost || 0), 0)) /
-                          samples.reduce((sum, s) => sum + (s.estimated_cost || 0) + (s.shipping_cost || 0), 0)) *
+                        ((samples.reduce((sum, s) => sum + parseFloat(s.contentGmv ?? '0'), 0) -
+                          samples.reduce((sum, s) => sum + parseFloat(s.estimatedCost ?? '0') + parseFloat(s.shippingCost ?? '0'), 0)) /
+                          samples.reduce((sum, s) => sum + parseFloat(s.estimatedCost ?? '0') + parseFloat(s.shippingCost ?? '0'), 0)) *
                         100
                       ).toFixed(1)
                     : '0'}

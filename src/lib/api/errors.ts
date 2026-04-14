@@ -17,3 +17,17 @@ export function handleRouteError(error: unknown, context: string): NextResponse<
   const message = error instanceof Error ? error.message : 'Internal server error';
   return apiError(message, 500);
 }
+
+/**
+ * Safe JSON body parser. Returns parsed body or a 400 response.
+ */
+export async function parseJsonBody<T = Record<string, unknown>>(
+  request: Request,
+): Promise<{ data: T; error?: never } | { data?: never; error: NextResponse<ApiError> }> {
+  try {
+    const data = (await request.json()) as T;
+    return { data };
+  } catch {
+    return { error: apiError('Invalid JSON body', 400) };
+  }
+}

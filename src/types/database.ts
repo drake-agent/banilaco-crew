@@ -6,6 +6,8 @@
  */
 
 // Re-export Drizzle inferred types
+import type { PinkTier as _PinkTier } from '@/db/schema/creators';
+import type { OutreachEntry as _OutreachEntry } from '@/db/schema/outreach';
 export type {
   Creator, NewCreator, PinkTier,
 } from '@/db/schema/creators';
@@ -64,8 +66,12 @@ export type {
 } from '@/db/schema/auth';
 
 // Legacy type aliases for backward compat
-export type CreatorTier = PinkTier;
+export type CreatorTier = _PinkTier;
 export type SampleStatus = 'requested' | 'approved' | 'shipped' | 'delivered' | 'reminder_1' | 'reminder_2' | 'content_posted' | 'no_response';
 export type SampleSetType = 'hero' | 'premium' | 'mini' | 'full' | 'welcome';
 export type CreatorSource = 'open_collab' | 'dm_outreach' | 'mcn' | 'buyer_to_creator' | 'referral' | 'paid' | 'discord';
 export type CreatorStatus = 'pending' | 'active' | 'inactive' | 'churned';
+export type OutreachRecord = _OutreachEntry;
+export type OutreachStatus = 'identified' | 'dm_sent' | 'responded' | 'sample_requested' | 'converted' | 'declined' | 'no_response';
+export type OutreachChannel = 'tiktok_dm' | 'instagram_dm' | 'email' | 'mcn_referral';
+export type OutreachTierType = 'tier_a' | 'tier_b';

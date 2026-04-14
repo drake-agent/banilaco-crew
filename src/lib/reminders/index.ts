@@ -3,7 +3,7 @@
  */
 
 export { ReminderEngine } from './reminder-engine';
-export type { ShipmentWithCreator, ReminderResult } from './reminder-engine';
+export type { ReminderResult } from './reminder-engine';
 
 export { renderTemplate } from './templates';
 

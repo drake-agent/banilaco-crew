@@ -18,6 +18,9 @@ import * as outreach from './schema/outreach';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  max: 3, // Serverless: keep low to avoid exhausting PostgreSQL connections
+  idleTimeoutMillis: 20000,
+  connectionTimeoutMillis: 5000,
 });
 
 export const db = drizzle(pool, {

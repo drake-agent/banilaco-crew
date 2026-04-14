@@ -55,6 +55,23 @@ export async function POST(request: NextRequest) {
   const end = new Date(periodEnd);
   const period = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
 
+  // BUG-4 FIX: Idempotency check — prevent duplicate payouts for same period
+  const existingPayouts = await db
+    .select({ id: creatorPayouts.id })
+    .from(creatorPayouts)
+    .where(and(
+      eq(creatorPayouts.periodStart, periodStart),
+      eq(creatorPayouts.periodEnd, periodEnd),
+    ))
+    .limit(1);
+
+  if (existingPayouts.length > 0) {
+    return NextResponse.json(
+      { error: `Payouts already generated for period ${periodStart} to ${periodEnd}. Delete existing payouts first.` },
+      { status: 409 },
+    );
+  }
+
   // Get all active creators
   const activeCreators = await db
     .select()

@@ -60,6 +60,9 @@ export const missionCompletions = pgTable('mission_completions', {
     enum: ['auto', 'manual', 'ai'],
   }),
 
+  // Mystery mission tracking
+  mysteryMultiplier: decimal('mystery_multiplier', { precision: 3, scale: 1 }),
+
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   // One completion per day per mission per creator
@@ -80,6 +83,7 @@ export const dailyMissionSchedule = pgTable('daily_mission_schedule', {
   missionId: uuid('mission_id').references(() => missions.id).notNull(),
   activeDate: date('active_date').notNull(),
   slotOrder: integer('slot_order'),
+  isMystery: boolean('is_mystery').default(false).notNull(),
 
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({

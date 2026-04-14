@@ -32,6 +32,25 @@ export interface CreatorContentMetrics {
   topContentType: string | null;
 }
 
+export interface TierComparison {
+  tierMedianViews: number;
+  tierMedianEngagement: number;
+  tierTopFormat: string;
+  creatorRankPercentile: number;
+}
+
+export interface CreatorAnalysis {
+  creator: {
+    tiktok_handle: string;
+    tier: string;
+    follower_count: number;
+    monthly_gmv: number;
+    monthly_content_count: number;
+  };
+  metrics: CreatorContentMetrics;
+  tierComparison: TierComparison;
+}
+
 export class RecommendationEngine {
   async generateRecommendations(creatorId: string): Promise<Recommendation[]> {
     // Fetch creator

@@ -134,7 +134,7 @@ export default function Home() {
           {/* Pink Petal */}
           <div className="card border-2 border-pink-200">
             <h3 className="text-lg font-bold text-gray-900 mb-2">🌸 Pink Petal</h3>
-            <p className="text-sm text-gray-600 mb-4">Join + AI profile</p>
+            <p className="text-sm text-gray-600 mb-4">Join + First Mission</p>
             <div className="text-3xl font-bold gradient-text mb-2">10%</div>
             <p className="text-xs text-gray-500 mb-4">+ Flat Fee per mission</p>
             <ul className="space-y-3 text-sm text-gray-600">
@@ -235,7 +235,7 @@ export default function Home() {
             </div>
             <h3 className="text-xl font-bold text-gray-900 mb-3">Join via Discord</h3>
             <p className="text-gray-600">
-              Sign in with Discord, link your TikTok, and complete your AI profile to unlock Pink Petal tier.
+              Sign in with Discord, link your TikTok, and complete your first mission to unlock Pink Petal tier.
             </p>
           </div>
 

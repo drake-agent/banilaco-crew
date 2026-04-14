@@ -12,6 +12,7 @@ const navItems = [
   { href: '/creator/earnings', label: 'Earnings', icon: '💰' },
   { href: '/creator/samples', label: 'My Samples', icon: '📦' },
   { href: '/creator/squad', label: 'My Squad', icon: '👥' },
+  { href: '/creator/collab', label: 'Collab Duo', icon: '👫' },
   { href: '/creator/league', label: 'PINK LEAGUE', icon: '🏆' },
 ];
 

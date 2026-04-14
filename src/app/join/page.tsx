@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -29,6 +29,14 @@ interface FormData {
 }
 
 export default function JoinPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="text-gray-400">Loading...</div></div>}>
+      <JoinPageContent />
+    </Suspense>
+  );
+}
+
+function JoinPageContent() {
   const searchParams = useSearchParams();
 
   const [formData, setFormData] = useState<FormData>({

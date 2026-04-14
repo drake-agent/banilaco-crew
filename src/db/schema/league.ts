@@ -28,6 +28,7 @@ export const pinkLeagueEntries = pgTable('pink_league_entries', {
   finalRank: integer('final_rank'),
   isCrownCandidate: boolean('is_crown_candidate').default(false),
   fanVoteCount: integer('fan_vote_count').default(0),
+  seasonStartMultiplier: decimal('season_start_multiplier', { precision: 3, scale: 2 }).default('1.00'),
   brandReviewScore: decimal('brand_review_score', { precision: 5, scale: 2 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
@@ -46,6 +47,17 @@ export const pinkLeagueDailySnapshots = pgTable('pink_league_daily_snapshots', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => ({
   dailyUnique: unique('uq_daily_snapshot').on(table.seasonId, table.creatorId, table.snapshotDate),
+}));
+
+// SEC-1 FIX: Per-user vote dedup table
+export const pinkLeagueVotes = pgTable('pink_league_votes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  seasonId: uuid('season_id').references(() => pinkLeagueSeasons.id).notNull(),
+  voterId: text('voter_id').notNull(), // NextAuth user ID
+  creatorId: uuid('creator_id').references(() => creators.id).notNull(),
+  votedAt: timestamp('voted_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({
+  oneVotePerUser: unique('uq_season_voter').on(table.seasonId, table.voterId),
 }));
 
 export const seasonsRelations = relations(pinkLeagueSeasons, ({ many }) => ({

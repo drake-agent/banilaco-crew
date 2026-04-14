@@ -18,6 +18,7 @@ export async function searchSemantic(
   query: string,
   pools: string[] = ['squad'],
   limit = 5,
+  userId?: string, // Optional: filter personal memories to this creator
 ): Promise<Array<typeof semanticMemory.$inferSelect>> {
   // Escape LIKE metacharacters to prevent wildcard injection (FIX: SEC-2)
   function escapeLike(str: string): string {
@@ -38,9 +39,18 @@ export async function searchSemantic(
     ilike(semanticMemory.content, `%${escapeLike(kw)}%`),
   );
 
-  const poolConditions = pools.map((p) =>
-    eq(semanticMemory.poolId, p),
-  );
+  // Pool filtering — for "personal" pool, also filter by userId
+  // This ensures creator A's personal memories don't leak to creator B
+  const poolConditions = pools.map((p) => {
+    if (p === 'personal' && userId) {
+      return and(eq(semanticMemory.poolId, 'personal'), eq(semanticMemory.userId, userId));
+    }
+    if (p === 'personal' && !userId) {
+      // No userId → skip personal pool (don't show random personal memories)
+      return sql`false`;
+    }
+    return eq(semanticMemory.poolId, p);
+  });
 
   const results = await db
     .select()
@@ -55,15 +65,16 @@ export async function searchSemantic(
     .orderBy(desc(semanticMemory.importance))
     .limit(limit);
 
-  // Update access count for retrieved entries
-  for (const entry of results) {
-    await db
-      .update(semanticMemory)
+  // Batch update access counts (non-blocking)
+  if (results.length > 0) {
+    const ids = results.map((r) => r.id);
+    db.update(semanticMemory)
       .set({
-        accessCount: (entry.accessCount ?? 0) + 1,
+        accessCount: sql`${semanticMemory.accessCount} + 1`,
         lastAccessed: new Date(),
       })
-      .where(eq(semanticMemory.id, entry.id));
+      .where(sql`${semanticMemory.id} = ANY(${ids})`)
+      .catch(() => {}); // non-blocking
   }
 
   return results;

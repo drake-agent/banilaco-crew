@@ -19,7 +19,6 @@ interface OnboardingChecklistProps {
 const STEP_LINKS: Record<string, string> = {
   discord: '/auth', // Discord OAuth
   tiktok: '/creator', // TikTok linking in settings
-  profile: '/creator', // AI profile
   mission: '/creator/missions',
   content: '/creator/content',
 };

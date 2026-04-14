@@ -15,6 +15,7 @@ const CHANNELS = {
   missionFeed: process.env.DISCORD_CH_MISSION_FEED,
   pinkLeague: process.env.DISCORD_CH_PINK_LEAGUE,
   squadActivity: process.env.DISCORD_CH_SQUAD_ACTIVITY,
+  collabActivity: process.env.DISCORD_CH_COLLAB_ACTIVITY,
 } as const;
 
 async function sendToChannel(
@@ -171,4 +172,33 @@ export async function notifyDailyMissions(
   }
 
   await sendToChannel(client, 'dailyMission', embed);
+}
+
+export async function notifyCollabDuoVerified(
+  client: Client,
+  params: {
+    initiatorDiscordId: string;
+    partnerDiscordId: string;
+    productTag: string;
+    boostPct: number;
+    isDynamicDuo: boolean;
+    duoStreak: number;
+  },
+): Promise<void> {
+  const boostStr = `+${(params.boostPct * 100).toFixed(0)}%`;
+  const duoLabel = params.isDynamicDuo
+    ? `\n💪 **Dynamic Duo** x${params.duoStreak} — extra +5% boost!`
+    : '';
+
+  const embed = new EmbedBuilder()
+    .setTitle('👫 Collab Duo Verified!')
+    .setColor(0x6366F1)
+    .setDescription(
+      `<@${params.initiatorDiscordId}> × <@${params.partnerDiscordId}>\n\n` +
+      `🏷️ **${params.productTag.replace(/_/g, ' ')}**\n` +
+      `⭐ Pink Score **${boostStr}** boost on collab content${duoLabel}`,
+    )
+    .setTimestamp();
+
+  await sendToChannel(client, 'collabActivity', embed);
 }

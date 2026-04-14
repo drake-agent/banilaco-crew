@@ -15,6 +15,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getRecentForDistillation } from './memory/episodic';
 import { saveSemantic, archiveOldMemories } from './memory/semantic';
+import { syncAllCreatorEntities } from './memory/creator-sync';
 
 const anthropic = new Anthropic();
 
@@ -23,6 +24,7 @@ interface DistillationResult {
   candidatesFound: number;
   promoted: number;
   archived: number;
+  entitySynced: number;
   errors: string[];
 }
 
@@ -35,6 +37,7 @@ export async function runDistillation(): Promise<DistillationResult> {
     candidatesFound: 0,
     promoted: 0,
     archived: 0,
+    entitySynced: 0,
     errors: [],
   };
 
@@ -55,32 +58,42 @@ export async function runDistillation(): Promise<DistillationResult> {
       .join('\n');
 
     // 3. Extract promotion candidates via Claude
+    // Include both squad-wide and per-creator knowledge
     const extraction = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: `You are a knowledge distiller for the BANILACO SQUAD K-beauty creator community.
 
 Your job: scan Discord conversations and extract HIGH-VALUE knowledge worth remembering long-term.
 
-ONLY extract items that match these criteria:
+## Squad-level knowledge (poolId: "squad")
 - Frequently asked questions (same topic appears 2+ times)
 - Useful tips shared by experienced creators (content strategy, hook advice, product insights)
 - Decisions made by admins (policy changes, new rules)
 - Product insights (what sells well, seasonal trends)
 - Community patterns (what motivates creators, common struggles)
 
+## Per-creator knowledge (poolId: "personal")
+- Creator preferences: "I prefer GRWM format", "Before/After works best for me"
+- Performance insights: "My CIZ videos get 3x more views"
+- Product opinions: "Clean It Zero is my hero product"
+- Content strategy details unique to one creator
+- Goals shared by a creator: "I want to hit Pink Rose this month"
+
 DO NOT extract:
 - Casual greetings or small talk
-- One-off personal questions
-- Duplicate information already covered in basic onboarding
+- Already-known basic information
+- Duplicate information
 
 Output JSON array:
 [
   {
     "content": "the knowledge to remember (1-2 sentences, factual)",
-    "memoryType": "Tip" | "Fact" | "Observation" | "Decision",
+    "memoryType": "Tip" | "Fact" | "Observation" | "Decision" | "Goal",
     "importance": 0.5-0.9,
-    "tags": ["relevant", "tags"]
+    "tags": ["relevant", "tags"],
+    "poolId": "squad" | "personal",
+    "userId": "discord_user_id or null for squad-level knowledge"
   }
 ]
 
@@ -88,7 +101,7 @@ Return empty array [] if nothing worth promoting.`,
       messages: [
         {
           role: 'user',
-          content: `Scan these last 24h Discord conversations and extract knowledge worth remembering:\n\n${conversationText.slice(0, 8000)}`,
+          content: `Scan these last 24h Discord conversations and extract knowledge worth remembering:\n\n${conversationText.slice(0, 12000)}`,
         },
       ],
     });
@@ -102,9 +115,11 @@ Return empty array [] if nothing worth promoting.`,
 
     let candidates: Array<{
       content: string;
-      memoryType: 'Tip' | 'Fact' | 'Observation' | 'Decision';
+      memoryType: 'Tip' | 'Fact' | 'Observation' | 'Decision' | 'Goal';
       importance: number;
       tags: string[];
+      poolId?: string;
+      userId?: string | null;
     }>;
 
     try {
@@ -119,6 +134,7 @@ Return empty array [] if nothing worth promoting.`,
     result.candidatesFound = candidates.length;
 
     // 5. Save each candidate to semantic memory (with dedup)
+    // Now supports per-creator personal memories
     for (const candidate of candidates) {
       try {
         await saveSemantic({
@@ -127,7 +143,8 @@ Return empty array [] if nothing worth promoting.`,
           importance: candidate.importance.toString(),
           tags: candidate.tags,
           sourceType: 'distillation',
-          poolId: 'squad',
+          poolId: candidate.poolId ?? 'squad',
+          userId: candidate.userId ?? undefined,
         });
         result.promoted++;
       } catch (err) {
@@ -137,6 +154,17 @@ Return empty array [] if nothing worth promoting.`,
 
     // 6. Anti-bloat: archive old entries
     result.archived = await archiveOldMemories(90);
+
+    // 7. Sync entity memory from DB sources (content, samples, orders)
+    try {
+      const entityResult = await syncAllCreatorEntities();
+      result.entitySynced = entityResult.synced;
+      if (entityResult.errors.length > 0) {
+        result.errors.push(...entityResult.errors.slice(0, 5));
+      }
+    } catch (err) {
+      result.errors.push(`Entity sync failed: ${err instanceof Error ? err.message : 'Unknown'}`);
+    }
 
   } catch (err) {
     result.errors.push(`Distillation error: ${err instanceof Error ? err.message : 'Unknown'}`);
