@@ -22,6 +22,10 @@ interface FormData {
   email: string;
   instagramHandle: string;
   followerCount: string;
+  // Affiliate-signal fields (entered as strings so empty inputs map cleanly).
+  avgViews: string;
+  engagementRate: string;       // percent, e.g. "5.2"
+  pastAffiliateGmv: string;     // USD, e.g. "1500"
   contentCategories: string[];
   whyJoin: string;
   brandExperience: string[];
@@ -45,6 +49,9 @@ function JoinPageContent() {
     email: '',
     instagramHandle: '',
     followerCount: '',
+    avgViews: '',
+    engagementRate: '',
+    pastAffiliateGmv: '',
     contentCategories: [],
     whyJoin: '',
     brandExperience: [],
@@ -112,12 +119,21 @@ function JoinPageContent() {
     }
 
     try {
+      // 빈 문자열이면 undefined로 보내 서버에서 null로 저장되게 한다.
+      const parseOptionalNumber = (s: string): number | undefined => {
+        const v = parseFloat(s);
+        return Number.isFinite(v) && v >= 0 ? v : undefined;
+      };
+
       const payload = {
         tiktok_handle: formData.tiktokHandle,
         display_name: formData.displayName || undefined,
         email: formData.email,
         instagram_handle: formData.instagramHandle || undefined,
         follower_count: formData.followerCount || undefined,
+        avg_views: parseOptionalNumber(formData.avgViews),
+        engagement_rate: parseOptionalNumber(formData.engagementRate),
+        past_affiliate_gmv: parseOptionalNumber(formData.pastAffiliateGmv),
         content_categories: formData.contentCategories,
         why_join: formData.whyJoin || undefined,
         brand_experience: formData.brandExperience,
@@ -282,6 +298,43 @@ function JoinPageContent() {
                   ))}
                 </select>
               </div>
+            </div>
+          </div>
+
+          {/* Section 1.5: Affiliate Performance (어필리에이트 전환력 시그널) */}
+          <div className="bg-linear-to-br from-pink-50 to-rose-50 border border-pink-200 rounded-xl p-6 sm:p-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Affiliate Performance</h2>
+            <p className="text-sm text-gray-600 mb-6">
+              Optional, but these signals matter most to us — we prioritize conversion ability over follower count.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <FormField
+                label="Avg Video Views"
+                name="avgViews"
+                type="number"
+                placeholder="e.g. 5000"
+                value={formData.avgViews}
+                onChange={handleInputChange}
+                hint="Average views on your last 10 videos"
+              />
+              <FormField
+                label="Engagement Rate"
+                name="engagementRate"
+                type="number"
+                placeholder="e.g. 5.2"
+                value={formData.engagementRate}
+                onChange={handleInputChange}
+                hint="Percent (%) — (likes + comments + shares) / views × 100"
+              />
+              <FormField
+                label="Past Affiliate GMV"
+                name="pastAffiliateGmv"
+                type="number"
+                placeholder="e.g. 2000"
+                value={formData.pastAffiliateGmv}
+                onChange={handleInputChange}
+                hint="USD you've earned as an affiliate (any platform)"
+              />
             </div>
           </div>
 

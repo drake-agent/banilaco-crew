@@ -361,12 +361,22 @@ export class DataSyncOrchestrator {
 
         for (const creator of newCreators) {
           try {
+            // Tier A = 어필리에이트 전환 가능성 상위.
+            // 팔로워 수가 아니라 engagement_rate × avg_views(실제 반응하는 시청자 볼륨)로 분류한다.
+            // 임계값 5000 ≈ 5% engagement × 100K views 또는 10% engagement × 50K views.
+            const conversionProxy = creator.engagement_rate * creator.avg_views;
+            const outreachTier = conversionProxy >= 5000 ? 'tier_a' : 'tier_b';
+
+            // engagement_rate는 percent(5.23) → 스키마의 decimal(5,4) fraction(0.0523)로 변환.
+            const engRateFraction = Math.round((creator.engagement_rate / 100) * 10000) / 10000;
+
             await db.insert(outreachPipeline).values({
               tiktokHandle: creator.tiktok_handle,
               displayName: creator.display_name,
               followerCount: creator.follower_count,
+              engagementRate: engRateFraction.toString(),
               sourceBrand: creator.source_brand,
-              outreachTier: creator.follower_count >= 100000 ? 'tier_a' : 'tier_b',
+              outreachTier,
               status: 'identified',
             });
             totalNew++;

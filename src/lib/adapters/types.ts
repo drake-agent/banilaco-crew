@@ -167,10 +167,11 @@ export interface ICompetitorDiscoveryAdapter {
   /** 경쟁사 해시태그/멘션으로 크리에이터 찾기 */
   discoverCreators(params: {
     brand: string;
-    hashtags: string[];       // 브랜드 관련 해시태그
-    min_followers?: number;   // 기본 1000
-    min_avg_views?: number;   // 기본 500
-    count?: number;           // 기본 50
+    hashtags: string[];           // 브랜드 관련 해시태그
+    min_followers?: number;       // 기본 1000 (floor only)
+    min_avg_views?: number;       // 기본 500
+    min_engagement_rate?: number; // 기본 2.0 (%) — 어필리에이트 전환 시그널
+    count?: number;               // 기본 50
   }): Promise<DiscoveredCreator[]>;
 
   /** TikTok Shop 특정 상품의 어필리에이트 크리에이터 찾기 */

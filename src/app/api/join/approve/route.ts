@@ -3,12 +3,14 @@ import { db } from '@/db';
 import { creators } from '@/db/schema/creators';
 import { joinApplications } from '@/db/schema/applications';
 import { verifyAdmin } from '@/lib/auth';
+import { scoreApplication } from '@/lib/join/scoring';
 import { and, eq } from 'drizzle-orm';
 
 /**
  * POST /api/join/approve — Admin: approve a join application
  *
  * Creates a creator record and auto-links squad leader if squad_code is present.
+ * Recomputes the affiliate-conversion applicant score on approval.
  */
 export async function POST(request: NextRequest) {
   const adminResult = await verifyAdmin();
@@ -36,10 +38,20 @@ export async function POST(request: NextRequest) {
         return { kind: 'already_reviewed' as const, status: app.status };
       }
 
+      // 어필리에이트 전환력 점수 (0-100) — 승인 시점에 재계산.
+      const score = scoreApplication({
+        avgViews: app.avgViews,
+        engagementRate: app.engagementRate !== null ? parseFloat(app.engagementRate) : null,
+        pastAffiliateGmv: app.pastAffiliateGmv !== null ? parseFloat(app.pastAffiliateGmv) : null,
+        contentCategories: (app.contentCategories as string[]) ?? [],
+        brandExperience: (app.brandExperience as string[]) ?? [],
+      });
+
       const [claimedApp] = await tx
         .update(joinApplications)
         .set({
           status: 'approved',
+          applicantScore: score.total,
           reviewedBy: adminResult.user.id,
           reviewedAt: new Date(),
         })
@@ -89,7 +101,7 @@ export async function POST(request: NextRequest) {
         })
         .returning();
 
-      return { kind: 'approved' as const, newCreator, squadLeaderId, squadCode };
+      return { kind: 'approved' as const, newCreator, squadLeaderId, squadCode, score };
     });
 
     if (approval.kind === 'not_found') {
@@ -109,6 +121,7 @@ export async function POST(request: NextRequest) {
         squadLeaderId: approval.squadLeaderId,
         squadCode: approval.squadCode,
       },
+      applicantScore: approval.score,
     });
   } catch (err) {
     if (isUniqueViolation(err)) {

@@ -1,8 +1,18 @@
 /**
- * PINK LEAGUE Scoring Engine
+ * PINK LEAGUE Scoring Engine (Affiliate-First)
  *
  * Pink Score = (GMV × weight_gmv) + (Viral Index × weight_viral)
- * Viral Index = (views×0.3 + shares×0.4 + likes×0.2 + comments×0.1) / follower_count × 1000
+ *
+ * Viral Index is affiliate-weighted, NOT influencer-weighted:
+ * - shares  × 3.0  → strongest purchase-intent proxy (sharing = recommending)
+ * - comments × 1.5 → genuine consideration / questions about product
+ * - views   × 0.01 → reach signal (abundant, low per-unit weight)
+ * - likes   × 0.1  → passive approval (lowest weight)
+ *
+ * No follower-count normalization: we reward absolute conversion volume,
+ * not per-follower "efficiency". A 10K-follower affiliate with 500 shares
+ * beats a 1M-follower influencer with 500 shares, and that's the goal —
+ * GMV is the ceiling, virality is the floor.
  */
 
 import { db } from '@/db';
@@ -16,6 +26,12 @@ import { eq, and, gte, inArray, sql } from 'drizzle-orm';
 const WEIGHT_GMV = 1.0;
 const WEIGHT_VIRAL = 0.5;
 
+// Engagement weights (affiliate-tilted: shares > comments > views > likes)
+const W_SHARES = 3.0;
+const W_COMMENTS = 1.5;
+const W_VIEWS = 0.01;
+const W_LIKES = 0.1;
+
 export interface PinkScoreBreakdown {
   gmvScore: number;
   viralScore: number;
@@ -25,6 +41,9 @@ export interface PinkScoreBreakdown {
 
 /**
  * Compute Pink Score for a creator based on their recent content + GMV.
+ *
+ * NOTE: `followerCount` is intentionally NOT used in viral-index calculation.
+ * It's accepted only for API-shape compatibility with older callers.
  */
 export function computePinkScore(params: {
   monthlyGmv: number;
@@ -32,17 +51,18 @@ export function computePinkScore(params: {
   likes: number;
   comments: number;
   shares: number;
-  followerCount: number;
+  followerCount?: number; // deprecated input, ignored
 }): PinkScoreBreakdown {
-  const { monthlyGmv, views, likes, comments, shares, followerCount } = params;
+  const { monthlyGmv, views, likes, comments, shares } = params;
 
   const gmvScore = monthlyGmv * WEIGHT_GMV;
 
-  // Viral Index: normalize engagement by follower count
-  const rawEngagement = (views * 0.3) + (shares * 0.4) + (likes * 0.2) + (comments * 0.1);
-  const viralIndex = followerCount > 0
-    ? (rawEngagement / followerCount) * 1000
-    : 0;
+  // Viral Index: absolute affiliate-weighted engagement (no follower normalization)
+  const viralIndex =
+    shares * W_SHARES +
+    comments * W_COMMENTS +
+    views * W_VIEWS +
+    likes * W_LIKES;
   const viralScore = viralIndex * WEIGHT_VIRAL;
 
   return {

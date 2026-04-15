@@ -38,19 +38,22 @@ export const COMPETITOR_HASHTAG_MAP: Record<string, string[]> = {
 
 interface CompetitorDiscoveryConfig {
   crawler: ITikTokCrawlerAdapter;
-  minFollowers?: number;    // 기본 1000
-  minAvgViews?: number;     // 기본 500
+  minFollowers?: number;         // 기본 1000 (floor only — 신규 계정 배제용)
+  minAvgViews?: number;          // 기본 500
+  minEngagementRate?: number;    // 기본 2.0 (%) — 어필리에이트 전환 시그널
 }
 
 export class CompetitorDiscoveryAdapter implements ICompetitorDiscoveryAdapter {
   private crawler: ITikTokCrawlerAdapter;
   private minFollowers: number;
   private minAvgViews: number;
+  private minEngagementRate: number;
 
   constructor(config: CompetitorDiscoveryConfig) {
     this.crawler = config.crawler;
     this.minFollowers = config.minFollowers || 1000;
     this.minAvgViews = config.minAvgViews || 500;
+    this.minEngagementRate = config.minEngagementRate ?? 2.0;
   }
 
   async discoverCreators(params: {
@@ -58,10 +61,12 @@ export class CompetitorDiscoveryAdapter implements ICompetitorDiscoveryAdapter {
     hashtags: string[];
     min_followers?: number;
     min_avg_views?: number;
+    min_engagement_rate?: number;
     count?: number;
   }): Promise<DiscoveredCreator[]> {
     const minFollowers = params.min_followers || this.minFollowers;
     const minAvgViews = params.min_avg_views || this.minAvgViews;
+    const minEngagementRate = params.min_engagement_rate ?? this.minEngagementRate;
     const targetCount = params.count || 50;
 
     // 1단계: 해시태그별 비디오 크롤링
@@ -95,17 +100,34 @@ export class CompetitorDiscoveryAdapter implements ICompetitorDiscoveryAdapter {
     const handles = Array.from(creatorVideoMap.keys()).slice(0, 200); // 배치 제한
     const profiles = await this.crawler.fetchProfiles(handles);
 
-    // 3단계: 필터링 (팔로워 + 평균 조회수)
-    const qualified = profiles.filter((p) => {
+    // 3단계: 프로필별 메트릭 계산 (avg_views + engagement_rate)
+    // 어필리에이트 시그널이 필터링/정렬에 쓰이기 때문에 여기서 한 번만 계산한다.
+    const profileMetrics = profiles.map((p) => {
       const videos = creatorVideoMap.get(p.tiktok_handle.toLowerCase()) || [];
       const avgViews = videos.length
         ? videos.reduce((sum, v) => sum + v.view_count, 0) / videos.length
         : 0;
-      return p.follower_count >= minFollowers && avgViews >= minAvgViews;
+      const engagementRate = avgViews
+        ? (videos.reduce((sum, v) => sum + v.like_count + v.comment_count + v.share_count, 0) /
+            videos.length /
+            avgViews) *
+          100
+        : 0;
+      return { profile: p, videos, avgViews, engagementRate };
     });
 
-    // 4단계: 기존 DB 대조 (Drizzle)
-    const qualifiedHandles = qualified.map((p) => p.tiktok_handle);
+    // 4단계: 어필리에이트 필터 — 팔로워(floor) + 조회수 + 인게이지먼트 전환율
+    // 팔로워 숫자는 하한선으로만 쓴다 (신규 봇/빈 계정 배제). 전환 가능성의 핵심은
+    // engagement_rate (전환 의지) × avg_views (실제 도달)이다.
+    const qualified = profileMetrics.filter(
+      (m) =>
+        m.profile.follower_count >= minFollowers &&
+        m.avgViews >= minAvgViews &&
+        m.engagementRate >= minEngagementRate,
+    );
+
+    // 5단계: 기존 DB 대조 (Drizzle)
+    const qualifiedHandles = qualified.map((m) => m.profile.tiktok_handle);
     const existingCreators = qualifiedHandles.length > 0
       ? await db
           .select({ tiktokHandle: creators.tiktokHandle })
@@ -117,20 +139,9 @@ export class CompetitorDiscoveryAdapter implements ICompetitorDiscoveryAdapter {
       existingCreators.map((c) => c.tiktokHandle.toLowerCase())
     );
 
-    // 5단계: DiscoveredCreator 매핑
-    const discovered: DiscoveredCreator[] = qualified.map((profile) => {
-      const videos = creatorVideoMap.get(profile.tiktok_handle.toLowerCase()) || [];
-      const avgViews = videos.length
-        ? videos.reduce((sum, v) => sum + v.view_count, 0) / videos.length
-        : 0;
-      const engagementRate = avgViews
-        ? (videos.reduce((sum, v) => sum + v.like_count + v.comment_count + v.share_count, 0) /
-            videos.length /
-            avgViews) *
-          100
-        : 0;
-
-      return {
+    // 6단계: DiscoveredCreator 매핑
+    const discovered: DiscoveredCreator[] = qualified.map(
+      ({ profile, videos, avgViews, engagementRate }) => ({
         tiktok_handle: profile.tiktok_handle,
         tiktok_id: profile.tiktok_id,
         display_name: profile.display_name,
@@ -142,14 +153,17 @@ export class CompetitorDiscoveryAdapter implements ICompetitorDiscoveryAdapter {
         estimated_gmv: undefined, // TikTok Shop 데이터 없으면 추정 불가
         already_in_db: existingHandles.has(profile.tiktok_handle.toLowerCase()),
         discovered_at: new Date().toISOString(),
-      };
-    });
+      }),
+    );
 
-    // 신규 크리에이터 우선, 팔로워 순 정렬
+    // 신규 크리에이터 우선, 어필리에이트 전환 프록시(engagement × avg_views) 순 정렬.
+    // 팔로워 수가 아니라 "실제 반응하는 시청자 볼륨"으로 순위를 매긴다.
     return discovered
       .sort((a, b) => {
         if (a.already_in_db !== b.already_in_db) return a.already_in_db ? 1 : -1;
-        return b.follower_count - a.follower_count;
+        const scoreA = a.engagement_rate * a.avg_views;
+        const scoreB = b.engagement_rate * b.avg_views;
+        return scoreB - scoreA;
       })
       .slice(0, targetCount);
   }
