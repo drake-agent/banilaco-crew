@@ -8,7 +8,7 @@
 import { db } from '@/db';
 import { creators, type PinkTier, TIER_CONFIG } from '@/db/schema/creators';
 import { squadBonusLog } from '@/db/schema/squad';
-import { eq, desc, sql } from 'drizzle-orm';
+import { eq, desc, sql, inArray } from 'drizzle-orm';
 
 export interface SquadStats {
   memberCount: number;
@@ -33,6 +33,16 @@ export interface SquadLeaderboardEntry {
   memberCount: number;
   totalTeamGmv: number;
   totalBonus: number;
+}
+
+export class SquadJoinError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'SquadJoinError';
+    this.status = status;
+  }
 }
 
 export class SquadEngine {
@@ -195,6 +205,53 @@ export class SquadEngine {
    * Link a new member to a squad (when they join with a squad code)
    */
   async joinSquad(memberId: string, leaderId: string): Promise<void> {
+    if (memberId === leaderId) {
+      throw new SquadJoinError('You cannot join your own squad', 400);
+    }
+
+    const rows = await db
+      .select({
+        id: creators.id,
+        status: creators.status,
+        squadLeaderId: creators.squadLeaderId,
+      })
+      .from(creators)
+      .where(inArray(creators.id, [memberId, leaderId]));
+
+    const member = rows.find((row) => row.id === memberId);
+    const leader = rows.find((row) => row.id === leaderId);
+
+    if (!member) {
+      throw new SquadJoinError('Member not found', 404);
+    }
+    if (!leader) {
+      throw new SquadJoinError('Squad leader not found', 404);
+    }
+    if (leader.status !== 'active') {
+      throw new SquadJoinError('Squad leader must be active', 400);
+    }
+    if (member.squadLeaderId) {
+      throw new SquadJoinError('Creator is already in a squad', 409);
+    }
+
+    let ancestorId = leader.squadLeaderId;
+    const visited = new Set<string>([leader.id]);
+    while (ancestorId) {
+      if (ancestorId === memberId) {
+        throw new SquadJoinError('Join would create a squad cycle', 400);
+      }
+      if (visited.has(ancestorId)) break;
+      visited.add(ancestorId);
+
+      const [ancestor] = await db
+        .select({ id: creators.id, squadLeaderId: creators.squadLeaderId })
+        .from(creators)
+        .where(eq(creators.id, ancestorId))
+        .limit(1);
+
+      ancestorId = ancestor?.squadLeaderId ?? null;
+    }
+
     await db
       .update(creators)
       .set({ squadLeaderId: leaderId, updatedAt: new Date() })

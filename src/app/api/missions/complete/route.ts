@@ -75,6 +75,25 @@ export async function POST(request: Request) {
     }
   }
 
+  const today = new Date().toISOString().split('T')[0];
+  const [scheduleEntry] = await db
+    .select({ isMystery: dailyMissionSchedule.isMystery })
+    .from(dailyMissionSchedule)
+    .where(
+      and(
+        eq(dailyMissionSchedule.missionId, missionId),
+        eq(dailyMissionSchedule.activeDate, today),
+      ),
+    )
+    .limit(1);
+
+  if (!scheduleEntry) {
+    return NextResponse.json(
+      { error: 'Mission is not scheduled today' },
+      { status: 403 },
+    );
+  }
+
   // --- Zombie Filter: CHS + Anti-Exploit ---
   const [chs, exploit] = await Promise.all([
     computeCHS(creatorResult.creatorId, creatorResult.creator),
@@ -96,19 +115,7 @@ export async function POST(request: Request) {
   // submissions can't both slip through.
 
   // --- Mystery Mission: check if this mission is scheduled as mystery today ---
-  const today = new Date().toISOString().split('T')[0];
-  const [scheduleEntry] = await db
-    .select({ isMystery: dailyMissionSchedule.isMystery })
-    .from(dailyMissionSchedule)
-    .where(
-      and(
-        eq(dailyMissionSchedule.missionId, missionId),
-        eq(dailyMissionSchedule.activeDate, today),
-      ),
-    )
-    .limit(1);
-
-  const isMystery = scheduleEntry?.isMystery ?? false;
+  const isMystery = scheduleEntry.isMystery;
   const mysteryResult = isMystery ? rollMysteryMultiplier() : null;
   const mysteryMultiplier = mysteryResult?.multiplier ?? 1;
 

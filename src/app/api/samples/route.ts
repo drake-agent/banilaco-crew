@@ -117,8 +117,16 @@ export async function PATCH(request: NextRequest) {
   }
 
   // Map snake_case → camelCase for Drizzle
-  const updates: Record<string, unknown> = { updatedAt: new Date() };
-  if (rawUpdates.status) updates.status = rawUpdates.status;
+  const now = new Date();
+  const updates: Record<string, unknown> = { updatedAt: now };
+  if (rawUpdates.status) {
+    updates.status = rawUpdates.status;
+    if (rawUpdates.status === 'shipped') updates.shippedAt = now;
+    if (rawUpdates.status === 'delivered') updates.deliveredAt = now;
+    if (rawUpdates.status === 'reminder_1') updates.reminder1SentAt = now;
+    if (rawUpdates.status === 'reminder_2') updates.reminder2SentAt = now;
+    if (rawUpdates.status === 'content_posted') updates.contentPostedAt = now;
+  }
   if (rawUpdates.tracking_number) updates.trackingNumber = rawUpdates.tracking_number;
   if (rawUpdates.carrier) updates.carrier = rawUpdates.carrier;
   if (rawUpdates.notes !== undefined) updates.notes = rawUpdates.notes;

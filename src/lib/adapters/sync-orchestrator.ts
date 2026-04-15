@@ -234,48 +234,51 @@ export class DataSyncOrchestrator {
 
           // ARCH-008: Idempotency check
           const [existing] = await db
-            .select({ id: orderTracking.id })
+            .select({
+              id: orderTracking.id,
+              orderStatus: orderTracking.orderStatus,
+            })
             .from(orderTracking)
             .where(eq(orderTracking.shopOrderId, order.order_id))
             .limit(1);
 
-          if (existing) continue;
-
           const creatorId = creatorMap.get(order.creator_tiktok_id);
           if (!creatorId) continue;
+
+          const orderedAt = new Date(order.ordered_at);
+          const settledAt = order.settled_at ? new Date(order.settled_at) : null;
+
+          if (existing) {
+            const wasSettled = existing.orderStatus === 'settled';
+
+            await db.update(orderTracking).set({
+              creatorId,
+              orderStatus: order.order_status,
+              gmvAmount: order.gmv.toString(),
+              orderedAt,
+              settledAt,
+              syncedAt: new Date(),
+            }).where(eq(orderTracking.id, existing.id));
+
+            if (!wasSettled && order.order_status === 'settled') {
+              await this.creditSettledOrder(creatorId, order.gmv);
+              newOrders++;
+            }
+            continue;
+          }
 
           await db.insert(orderTracking).values({
             shopOrderId: order.order_id,
             creatorId,
             orderStatus: order.order_status,
             gmvAmount: order.gmv.toString(),
+            orderedAt,
+            settledAt,
           }).onConflictDoNothing();
 
           if (order.order_status === 'settled') {
-            // Increment GMV + recalculate tier
-            const [creator] = await db.select().from(creators).where(eq(creators.id, creatorId)).limit(1);
-            if (creator) {
-              const newMonthlyGmv = parseFloat(creator.monthlyGmv ?? '0') + order.gmv;
-              const newTotalGmv = parseFloat(creator.totalGmv ?? '0') + order.gmv;
-
-              const tierResult = calculateTier(creator.tier as PinkTier, {
-                missionCount: creator.missionCount ?? 0,
-                monthlyGmv: newMonthlyGmv,
-              });
-
-              await db.update(creators).set({
-                monthlyGmv: newMonthlyGmv.toString(),
-                totalGmv: newTotalGmv.toString(),
-                lastActiveAt: new Date(),
-                tier: tierResult.tier,
-                commissionRate: tierResult.commissionRate.toString(),
-                squadBonusRate: tierResult.squadBonusRate.toString(),
-                ...(tierResult.changed ? { tierUpdatedAt: new Date() } : {}),
-                updatedAt: new Date(),
-              }).where(eq(creators.id, creatorId));
-
-              newOrders++;
-            }
+            await this.creditSettledOrder(creatorId, order.gmv);
+            newOrders++;
           }
         }
 
@@ -423,6 +426,30 @@ export class DataSyncOrchestrator {
       const text = `${v.description} ${v.hashtags.join(' ')}`.toLowerCase();
       return keywords.some((kw) => text.includes(kw));
     });
+  }
+
+  private async creditSettledOrder(creatorId: string, gmv: number): Promise<void> {
+    const [creator] = await db.select().from(creators).where(eq(creators.id, creatorId)).limit(1);
+    if (!creator) return;
+
+    const newMonthlyGmv = parseFloat(creator.monthlyGmv ?? '0') + gmv;
+    const newTotalGmv = parseFloat(creator.totalGmv ?? '0') + gmv;
+
+    const tierResult = calculateTier(creator.tier as PinkTier, {
+      missionCount: creator.missionCount ?? 0,
+      monthlyGmv: newMonthlyGmv,
+    });
+
+    await db.update(creators).set({
+      monthlyGmv: newMonthlyGmv.toString(),
+      totalGmv: newTotalGmv.toString(),
+      lastActiveAt: new Date(),
+      tier: tierResult.tier,
+      commissionRate: tierResult.commissionRate.toString(),
+      squadBonusRate: tierResult.squadBonusRate.toString(),
+      ...(tierResult.changed ? { tierUpdatedAt: new Date() } : {}),
+      updatedAt: new Date(),
+    }).where(eq(creators.id, creatorId));
   }
 
   private result(

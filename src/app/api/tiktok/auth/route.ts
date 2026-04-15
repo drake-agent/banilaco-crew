@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { TikTokAuth } from '@/lib/tiktok/auth';
 import { db } from '@/db';
 import { tiktokCredentials } from '@/db/schema/tiktok';
+import { verifyAdmin } from '@/lib/auth';
 import { eq } from 'drizzle-orm';
 
 function getAuth() {
@@ -16,6 +17,9 @@ function getAuth() {
 }
 
 export async function GET() {
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
+
   const auth = getAuth();
   const state = crypto.randomUUID().slice(0, 8);
   const authUrl = auth.getAuthorizationUrl(state);
@@ -29,6 +33,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const adminResult = await verifyAdmin();
+  if (adminResult.error) return adminResult.error;
+
   try {
     const body = await request.json();
     const { code, state } = body;

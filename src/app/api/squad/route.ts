@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCreatorFromAuth, verifyAdmin, verifyCronAuth } from '@/lib/auth';
-import { SquadEngine } from '@/lib/referral/referral-engine';
+import { SquadEngine, SquadJoinError } from '@/lib/referral/referral-engine';
 
 const engine = new SquadEngine();
 
@@ -73,7 +73,14 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'leaderId required' }, { status: 400 });
       }
 
-      await engine.joinSquad(creatorResult.creatorId, leaderId);
+      try {
+        await engine.joinSquad(creatorResult.creatorId, leaderId);
+      } catch (err) {
+        if (err instanceof SquadJoinError) {
+          return NextResponse.json({ error: err.message }, { status: err.status });
+        }
+        throw err;
+      }
       return NextResponse.json({ joined: true });
     }
 

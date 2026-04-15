@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db';
 import { sampleShipments } from '@/db/schema/samples';
 import { creators } from '@/db/schema/creators';
-import { contentTracking } from '@/db/schema/content';
 import { verifyAdmin, verifyCronAuth } from '@/lib/auth';
-import { eq, and, isNull, isNotNull, sql, lte } from 'drizzle-orm';
+import { ReminderEngine, createNotificationSender } from '@/lib/reminders';
+import { eq, and, isNull, isNotNull, lte } from 'drizzle-orm';
 
 /**
  * GET /api/reminders — List samples needing reminders (admin) or process (cron)
@@ -74,58 +74,13 @@ export async function GET(request: NextRequest) {
  * Shared reminder processing logic (used by both cron GET and POST action=process)
  */
 async function processCronReminders(): Promise<NextResponse> {
-  const now = new Date();
-  const fourteenDaysAgo = new Date(now.getTime() - 14 * 86400000);
-
-  let processed = 0;
-
-  // Auto-detect content posted
-  const deliveredShipments = await db
-    .select({
-      id: sampleShipments.id,
-      creatorId: sampleShipments.creatorId,
-      deliveredAt: sampleShipments.deliveredAt,
-    })
-    .from(sampleShipments)
-    .where(
-      sql`${sampleShipments.status} IN ('delivered', 'reminder_1', 'reminder_2') AND ${sampleShipments.deliveredAt} IS NOT NULL`,
-    );
-
-  for (const shipment of deliveredShipments) {
-    const [content] = await db
-      .select({ id: contentTracking.id })
-      .from(contentTracking)
-      .where(
-        and(
-          eq(contentTracking.creatorId, shipment.creatorId),
-          sql`${contentTracking.postedAt} >= ${shipment.deliveredAt}`,
-        ),
-      )
-      .limit(1);
-
-    if (content) {
-      await db.update(sampleShipments).set({
-        status: 'content_posted',
-        contentPostedAt: now,
-        updatedAt: now,
-      }).where(eq(sampleShipments.id, shipment.id));
-      processed++;
-    }
-  }
-
-  // Mark 14+ day no-response
-  await db.update(sampleShipments).set({
-    status: 'no_response',
-    updatedAt: now,
-  }).where(
-    and(
-      eq(sampleShipments.status, 'reminder_2'),
-      isNotNull(sampleShipments.deliveredAt),
-      lte(sampleShipments.deliveredAt, fourteenDaysAgo),
-    ),
-  );
-
-  return NextResponse.json({ processed, message: 'Reminders processed' });
+  const engine = new ReminderEngine(createNotificationSender());
+  const result = await engine.processReminders();
+  return NextResponse.json({
+    processed: result.reminder1Sent + result.reminder2Sent + result.markedNoResponse + result.contentDetected,
+    message: 'Reminders processed',
+    ...result,
+  });
 }
 
 /**
@@ -142,9 +97,9 @@ export async function POST(request: NextRequest) {
     return processCronReminders();
   }
 
-  // Manual send (admin only)
+  // Manual processing (admin only)
   const adminResult = await verifyAdmin();
   if (adminResult.error) return adminResult.error;
 
-  return NextResponse.json({ message: 'Manual reminder sent (placeholder)' });
+  return processCronReminders();
 }
