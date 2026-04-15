@@ -68,6 +68,7 @@ interface TikTokShopConfig {
   appSecret: string;
   shopId: string;
   accessToken: string;
+  shopCipher?: string;
   baseUrl?: string;
 }
 
@@ -86,7 +87,10 @@ export class TikTokShopAdapter implements ITikTokShopAdapter {
 
   /** Request options with access token */
   private get reqOpts() {
-    return { accessToken: this.config.accessToken };
+    return {
+      accessToken: this.config.accessToken,
+      shopCipher: this.config.shopCipher,
+    };
   }
 
   // ------------------------------------

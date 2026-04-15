@@ -3,7 +3,7 @@ import { db } from '@/db';
 import { creators } from '@/db/schema/creators';
 import { joinApplications } from '@/db/schema/applications';
 import { verifyAdmin } from '@/lib/auth';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 /**
  * POST /api/join/approve — Admin: approve a join application
@@ -20,78 +20,150 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'applicationId required' }, { status: 400 });
   }
 
-  // Get application
-  const [app] = await db
-    .select()
-    .from(joinApplications)
-    .where(eq(joinApplications.id, applicationId))
-    .limit(1);
+  try {
+    const approval = await db.transaction(async (tx) => {
+      const [app] = await tx
+        .select()
+        .from(joinApplications)
+        .where(eq(joinApplications.id, applicationId))
+        .limit(1);
 
-  if (!app) {
-    return NextResponse.json({ error: 'Application not found' }, { status: 404 });
+      if (!app) {
+        return { kind: 'not_found' as const };
+      }
+
+      if (app.status !== 'pending') {
+        return { kind: 'already_reviewed' as const, status: app.status };
+      }
+
+      const [claimedApp] = await tx
+        .update(joinApplications)
+        .set({
+          status: 'approved',
+          reviewedBy: adminResult.user.id,
+          reviewedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(joinApplications.id, applicationId),
+            eq(joinApplications.status, 'pending'),
+          ),
+        )
+        .returning();
+
+      if (!claimedApp) {
+        return { kind: 'already_reviewed' as const, status: 'approved' };
+      }
+
+      let squadLeaderId: string | null = null;
+      if (claimedApp.squadCode) {
+        const [leader] = await tx
+          .select({ id: creators.id })
+          .from(creators)
+          .where(eq(creators.squadCode, claimedApp.squadCode.toUpperCase()))
+          .limit(1);
+        if (leader) {
+          squadLeaderId = leader.id;
+        }
+      }
+
+      const normalizedHandle = normalizeHandle(claimedApp.tiktokHandle);
+      const squadCode = await generateUniqueSquadCode(tx, normalizedHandle);
+
+      const [newCreator] = await tx
+        .insert(creators)
+        .values({
+          tiktokHandle: normalizedHandle,
+          displayName: claimedApp.displayName,
+          email: claimedApp.email,
+          instagramHandle: claimedApp.instagramHandle,
+          followerCount: parseFollowerCount(claimedApp.followerCount),
+          tier: 'pink_petal',
+          commissionRate: '0.1000',
+          status: 'active',
+          source: 'discord',
+          squadLeaderId,
+          squadCode,
+          onboardingStep: 0,
+          tags: (claimedApp.contentCategories as string[]) ?? [],
+        })
+        .returning();
+
+      return { kind: 'approved' as const, newCreator, squadLeaderId, squadCode };
+    });
+
+    if (approval.kind === 'not_found') {
+      return NextResponse.json({ error: 'Application not found' }, { status: 404 });
+    }
+
+    if (approval.kind === 'already_reviewed') {
+      return NextResponse.json({ error: `Application already ${approval.status}` }, { status: 409 });
+    }
+
+    return NextResponse.json({
+      approved: true,
+      creator: {
+        id: approval.newCreator.id,
+        tiktokHandle: approval.newCreator.tiktokHandle,
+        tier: approval.newCreator.tier,
+        squadLeaderId: approval.squadLeaderId,
+        squadCode: approval.squadCode,
+      },
+    });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return NextResponse.json({ error: 'Creator handle or squad code already exists' }, { status: 409 });
+    }
+    throw err;
   }
+}
 
-  if (app.status !== 'pending') {
-    return NextResponse.json({ error: `Application already ${app.status}` }, { status: 409 });
-  }
+function normalizeHandle(handle: string): string {
+  return handle.trim().replace(/^@+/, '').toLowerCase();
+}
 
-  // Resolve squad leader from squad code
-  let squadLeaderId: string | null = null;
-  if (app.squadCode) {
-    const [leader] = await db
+function generateBaseSquadCode(handle: string): string {
+  const base = `${handle.slice(0, 8)}SQUAD`.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return base || 'CREATORSQUAD';
+}
+
+async function generateUniqueSquadCode(
+  tx: Parameters<Parameters<typeof db.transaction>[0]>[0],
+  normalizedHandle: string,
+): Promise<string> {
+  const base = generateBaseSquadCode(normalizedHandle);
+
+  for (let attempt = 0; attempt < 50; attempt++) {
+    const suffix = attempt === 0 ? '' : String(attempt + 1);
+    const candidate = attempt === 0 ? base : `${base}${suffix}`;
+    const [existing] = await tx
       .select({ id: creators.id })
       .from(creators)
-      .where(eq(creators.squadCode, app.squadCode.toUpperCase()))
+      .where(eq(creators.squadCode, candidate))
       .limit(1);
-    if (leader) {
-      squadLeaderId = leader.id;
+
+    if (!existing) {
+      return candidate;
     }
   }
 
-  // Generate squad code for new creator
-  const handle = app.tiktokHandle.replace('@', '').toUpperCase();
-  const squadCode = `${handle.slice(0, 8)}SQUAD`.replace(/[^A-Z0-9]/g, '');
+  throw new Error('Unable to generate unique squad code');
+}
 
-  // Create creator
-  const [newCreator] = await db
-    .insert(creators)
-    .values({
-      tiktokHandle: app.tiktokHandle.replace('@', ''),
-      displayName: app.displayName,
-      email: app.email,
-      instagramHandle: app.instagramHandle,
-      followerCount: parseFollowerCount(app.followerCount),
-      tier: 'pink_petal',
-      commissionRate: '0.1000',
-      status: 'active',
-      source: 'discord',
-      squadLeaderId,
-      squadCode,
-      onboardingStep: 0,
-      tags: (app.contentCategories as string[]) ?? [],
-    })
-    .returning();
-
-  // Mark application as approved
-  await db
-    .update(joinApplications)
-    .set({
-      status: 'approved',
-      reviewedBy: adminResult.user.id,
-      reviewedAt: new Date(),
-    })
-    .where(eq(joinApplications.id, applicationId));
-
-  return NextResponse.json({
-    approved: true,
-    creator: {
-      id: newCreator.id,
-      tiktokHandle: newCreator.tiktokHandle,
-      tier: newCreator.tier,
-      squadLeaderId,
-      squadCode,
-    },
-  });
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object'
+    && err !== null
+    && (
+      'code' in err && err.code === '23505'
+      || 'message' in err
+        && typeof err.message === 'string'
+        && (
+          err.message.includes('uq_creators_tiktok_handle')
+          || err.message.includes('uq_creators_squad_code')
+        )
+    )
+  );
 }
 
 function parseFollowerCount(range: string | null): number | null {

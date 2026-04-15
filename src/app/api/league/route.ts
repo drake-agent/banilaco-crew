@@ -144,9 +144,37 @@ export async function POST(request: NextRequest) {
     case 'activate_season': {
       const { seasonId } = body;
 
-      await db.update(pinkLeagueSeasons).set({
-        status: 'active',
-      }).where(eq(pinkLeagueSeasons.id, seasonId));
+      const season = await db.transaction(async (tx) => {
+        const [targetSeason] = await tx
+          .select({ id: pinkLeagueSeasons.id })
+          .from(pinkLeagueSeasons)
+          .where(eq(pinkLeagueSeasons.id, seasonId))
+          .limit(1);
+
+        if (!targetSeason) return null;
+
+        await tx
+          .update(pinkLeagueSeasons)
+          .set({
+            status: 'completed',
+          })
+          .where(
+            and(
+              sql`${pinkLeagueSeasons.id} <> ${seasonId}`,
+              sql`${pinkLeagueSeasons.status} IN ('active', 'voting')`,
+            ),
+          );
+
+        const [activatedSeason] = await tx.update(pinkLeagueSeasons).set({
+          status: 'active',
+        }).where(eq(pinkLeagueSeasons.id, seasonId)).returning();
+
+        return activatedSeason;
+      });
+
+      if (!season) {
+        return NextResponse.json({ error: 'Season not found' }, { status: 404 });
+      }
 
       // Auto-register eligible creators
       const registered = await autoRegisterEligible(seasonId);

@@ -48,6 +48,8 @@ export default function CreatorsPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [savingCreator, setSavingCreator] = useState(false);
 
   const itemsPerPage = 20;
 
@@ -98,11 +100,7 @@ export default function CreatorsPage() {
   );
 
   // Handle form submission
-  const handleAddCreator = (e: React.FormEvent) => {
-    e.preventDefault();
-    // In a real app, this would send data to backend
-    console.log('New creator:', formData);
-    setShowAddModal(false);
+  const resetCreatorForm = () => {
     setFormData({
       tiktokHandle: '',
       displayName: '',
@@ -113,6 +111,44 @@ export default function CreatorsPage() {
       tags: '',
       notes: '',
     });
+    setFormError(null);
+  };
+
+  const handleAddCreator = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingCreator(true);
+    setFormError(null);
+
+    try {
+      const res = await fetch('/api/creators', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tiktokHandle: formData.tiktokHandle,
+          displayName: formData.displayName,
+          email: formData.email,
+          instagramHandle: formData.instagram,
+          source: formData.source,
+          mcnName: formData.mcnName,
+          tags: formData.tags.split(',').map((tag) => tag.trim()).filter(Boolean),
+          notes: formData.notes,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFormError(json.error || `HTTP ${res.status}`);
+        return;
+      }
+
+      await fetchCreators();
+      setShowAddModal(false);
+      resetCreatorForm();
+    } catch (err: unknown) {
+      setFormError(err instanceof Error ? err.message : 'Failed to add creator');
+    } finally {
+      setSavingCreator(false);
+    }
   };
 
   const handleFilterChange = (
@@ -591,18 +627,25 @@ export default function CreatorsPage() {
               <div className="mt-6 flex gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowAddModal(false)}
+                  onClick={() => {
+                    setShowAddModal(false);
+                    setFormError(null);
+                  }}
                   className="flex-1 rounded border border-slate-300 px-4 py-2 font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 rounded bg-linear-to-r from-pink-500 to-rose-500 px-4 py-2 font-semibold text-white transition hover:from-pink-600 hover:to-rose-600"
+                  disabled={savingCreator}
+                  className="flex-1 rounded bg-linear-to-r from-pink-500 to-rose-500 px-4 py-2 font-semibold text-white transition disabled:opacity-50 hover:from-pink-600 hover:to-rose-600"
                 >
-                  Add Creator
+                  {savingCreator ? 'Adding...' : 'Add Creator'}
                 </button>
               </div>
+              {formError && (
+                <p className="mt-3 text-sm font-medium text-red-600">{formError}</p>
+              )}
             </form>
           </div>
         </div>

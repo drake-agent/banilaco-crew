@@ -59,6 +59,12 @@ export async function POST(request: NextRequest) {
     }
 
     case 'leaderboard': {
+      const isCron = verifyCronAuth(request);
+      if (!isCron) {
+        const adminResult = await verifyAdmin();
+        if (adminResult.error) return adminResult.error;
+      }
+
       const limit = body.limit ?? 10;
       const leaderboard = await engine.getSquadLeaderboard(limit);
       return NextResponse.json({ leaderboard });

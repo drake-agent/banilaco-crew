@@ -94,11 +94,13 @@ export class ReminderEngine {
 
           // Day 10+ → reminder_2
           if (daysSince >= tenDaysMs && s.status === 'reminder_1' && !s.reminder2SentAt) {
-            const dmSent = await this.sender.sendDM(s.creatorHandle!, renderTemplate(reminder2_dm, templateVars));
-            if (!dmSent) continue;
-            if (s.creatorEmail) {
-              await this.sender.sendEmail(s.creatorEmail, 'Last Reminder: Post Your BANILACO SQUAD Content', renderTemplate(reminder2_email, templateVars));
-            }
+            const dmSent = s.creatorHandle
+              ? await this.sender.sendDM(s.creatorHandle, renderTemplate(reminder2_dm, templateVars))
+              : false;
+            const emailSent = s.creatorEmail
+              ? await this.sender.sendEmail(s.creatorEmail, 'Last Reminder: Post Your BANILACO SQUAD Content', renderTemplate(reminder2_email, templateVars))
+              : false;
+            if (!dmSent && !emailSent) continue;
             await db.update(sampleShipments).set({
               status: 'reminder_2', reminder2SentAt: new Date(), updatedAt: new Date(),
             }).where(eq(sampleShipments.id, s.id));
@@ -108,11 +110,13 @@ export class ReminderEngine {
 
           // Day 5+ → reminder_1
           if (daysSince >= fiveDaysMs && s.status === 'delivered' && !s.reminder1SentAt) {
-            const dmSent = await this.sender.sendDM(s.creatorHandle!, renderTemplate(reminder1_dm, templateVars));
-            if (!dmSent) continue;
-            if (s.creatorEmail) {
-              await this.sender.sendEmail(s.creatorEmail, 'Your BANILACO SQUAD Sample', renderTemplate(reminder1_email, templateVars));
-            }
+            const dmSent = s.creatorHandle
+              ? await this.sender.sendDM(s.creatorHandle, renderTemplate(reminder1_dm, templateVars))
+              : false;
+            const emailSent = s.creatorEmail
+              ? await this.sender.sendEmail(s.creatorEmail, 'Your BANILACO SQUAD Sample', renderTemplate(reminder1_email, templateVars))
+              : false;
+            if (!dmSent && !emailSent) continue;
             await db.update(sampleShipments).set({
               status: 'reminder_1', reminder1SentAt: new Date(), updatedAt: new Date(),
             }).where(eq(sampleShipments.id, s.id));

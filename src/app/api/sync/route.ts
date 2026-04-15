@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { type, options } = body;
-    const { orchestrator, discoveryAdapter } = createAdapters();
+    const { orchestrator } = await createAdapters();
 
     switch (type) {
       case 'profile_refresh':
@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
         );
 
       case 'shipping_track': {
-        const { shippingAdapter } = createAdapters({ includeShipping: true });
+        const { shippingAdapter } = await createAdapters({ includeShipping: true });
         if (!shippingAdapter) {
           return NextResponse.json({ error: 'No shipping tracker configured' }, { status: 400 });
         }
@@ -140,7 +140,7 @@ export async function GET(req: NextRequest) {
   // vercel.json 스케줄과 일치해야 함
   const hour = new Date().getUTCHours();
   const day = new Date().getUTCDay(); // 0=Sun, 1=Mon, 4=Thu
-  const { orchestrator } = createAdapters();
+  const { orchestrator } = await createAdapters();
 
   try {
     if (
@@ -180,7 +180,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ cron: 'competitor_discovery', result });
     } else if (hour % 2 === 0) {
       // 짝수 시간마다 — 샘플 배송 추적 동기화
-      const { shippingAdapter } = createAdapters({
+        const { shippingAdapter } = await createAdapters({
         includeShipping: true,
       });
       if (shippingAdapter) {

@@ -8,10 +8,9 @@ import { contentTracking } from '@/db/schema/content';
 import { orderTracking } from '@/db/schema/tiktok';
 import { outreachPipeline } from '@/db/schema/outreach';
 import { cronSyncState } from '@/db/schema/sync';
-import { eq, asc, sql, isNull, inArray } from 'drizzle-orm';
-import { calculateTier } from '@/lib/tier/auto-update';
+import { eq, asc, sql, inArray } from 'drizzle-orm';
 import { onNewContentDetected } from '@/agent/memory/creator-sync';
-import type { PinkTier } from '@/db/schema/creators';
+import { creditOrderGmvIfNeeded } from '@/lib/orders/gmv-credit';
 import type {
   ITikTokShopAdapter,
   ITikTokCrawlerAdapter,
@@ -21,6 +20,9 @@ import type {
   ComputedMetrics,
   CrawledVideo,
 } from './types';
+
+const RECENT_ORDER_LOOKBACK_DAYS = 30;
+const UNSETTLED_ORDER_LOOKBACK_DAYS = 90;
 
 interface OrchestratorConfig {
   shopAdapter: ITikTokShopAdapter;
@@ -206,9 +208,22 @@ export class DataSyncOrchestrator {
     });
 
     const endDate = new Date();
-    const startDate = new Date(Date.now() - 7 * 86400000);
+    const recentStartDate = new Date(Date.now() - RECENT_ORDER_LOOKBACK_DAYS * 86400000);
+    const maxUnsettledStartDate = new Date(Date.now() - UNSETTLED_ORDER_LOOKBACK_DAYS * 86400000);
+    const [oldestUnsettled] = await db
+      .select({ orderedAt: orderTracking.orderedAt })
+      .from(orderTracking)
+      .where(
+        sql`${orderTracking.orderStatus} IN ('pending', 'confirmed') AND ${orderTracking.orderedAt} IS NOT NULL`,
+      )
+      .orderBy(asc(orderTracking.orderedAt))
+      .limit(1);
+    const unsettledStartDate = oldestUnsettled?.orderedAt
+      ? new Date(Math.max(oldestUnsettled.orderedAt.getTime(), maxUnsettledStartDate.getTime()))
+      : recentStartDate;
+    const startDate = unsettledStartDate < recentStartDate ? unsettledStartDate : recentStartDate;
     let totalOrders = 0;
-    let newOrders = 0;
+    let creditedOrders = 0;
     let cursor: string | undefined;
     let hasMore = true;
 
@@ -237,6 +252,7 @@ export class DataSyncOrchestrator {
             .select({
               id: orderTracking.id,
               orderStatus: orderTracking.orderStatus,
+              gmvCreditedAt: orderTracking.gmvCreditedAt,
             })
             .from(orderTracking)
             .where(eq(orderTracking.shopOrderId, order.order_id))
@@ -247,10 +263,9 @@ export class DataSyncOrchestrator {
 
           const orderedAt = new Date(order.ordered_at);
           const settledAt = order.settled_at ? new Date(order.settled_at) : null;
+          const wasSettled = order.order_status === 'settled';
 
           if (existing) {
-            const wasSettled = existing.orderStatus === 'settled';
-
             await db.update(orderTracking).set({
               creatorId,
               orderStatus: order.order_status,
@@ -260,25 +275,33 @@ export class DataSyncOrchestrator {
               syncedAt: new Date(),
             }).where(eq(orderTracking.id, existing.id));
 
-            if (!wasSettled && order.order_status === 'settled') {
-              await this.creditSettledOrder(creatorId, order.gmv);
-              newOrders++;
+            if (wasSettled) {
+              const credited = await this.creditSettledOrder({
+                orderTrackingId: existing.id,
+                creatorId,
+                gmv: order.gmv,
+              });
+              if (credited) creditedOrders++;
             }
             continue;
           }
 
-          await db.insert(orderTracking).values({
+          const [inserted] = await db.insert(orderTracking).values({
             shopOrderId: order.order_id,
             creatorId,
             orderStatus: order.order_status,
             gmvAmount: order.gmv.toString(),
             orderedAt,
             settledAt,
-          }).onConflictDoNothing();
+          }).onConflictDoNothing().returning({ id: orderTracking.id });
 
-          if (order.order_status === 'settled') {
-            await this.creditSettledOrder(creatorId, order.gmv);
-            newOrders++;
+          if (inserted && wasSettled) {
+            const credited = await this.creditSettledOrder({
+              orderTrackingId: inserted.id,
+              creatorId,
+              gmv: order.gmv,
+            });
+            if (credited) creditedOrders++;
           }
         }
 
@@ -302,10 +325,18 @@ export class DataSyncOrchestrator {
       throw err;
     }
 
-    return this.result('shop_orders', newOrders, 0, start, {
-      orders_synced: newOrders,
+    return this.result('shop_orders', creditedOrders, 0, start, {
+      orders_synced: creditedOrders,
       total_fetched: totalOrders,
     });
+  }
+
+  private async creditSettledOrder(params: {
+    orderTrackingId: string;
+    creatorId: string;
+    gmv: number;
+  }): Promise<boolean> {
+    return creditOrderGmvIfNeeded(params);
   }
 
   // ------------------------------------
@@ -426,30 +457,6 @@ export class DataSyncOrchestrator {
       const text = `${v.description} ${v.hashtags.join(' ')}`.toLowerCase();
       return keywords.some((kw) => text.includes(kw));
     });
-  }
-
-  private async creditSettledOrder(creatorId: string, gmv: number): Promise<void> {
-    const [creator] = await db.select().from(creators).where(eq(creators.id, creatorId)).limit(1);
-    if (!creator) return;
-
-    const newMonthlyGmv = parseFloat(creator.monthlyGmv ?? '0') + gmv;
-    const newTotalGmv = parseFloat(creator.totalGmv ?? '0') + gmv;
-
-    const tierResult = calculateTier(creator.tier as PinkTier, {
-      missionCount: creator.missionCount ?? 0,
-      monthlyGmv: newMonthlyGmv,
-    });
-
-    await db.update(creators).set({
-      monthlyGmv: newMonthlyGmv.toString(),
-      totalGmv: newTotalGmv.toString(),
-      lastActiveAt: new Date(),
-      tier: tierResult.tier,
-      commissionRate: tierResult.commissionRate.toString(),
-      squadBonusRate: tierResult.squadBonusRate.toString(),
-      ...(tierResult.changed ? { tierUpdatedAt: new Date() } : {}),
-      updatedAt: new Date(),
-    }).where(eq(creators.id, creatorId));
   }
 
   private result(

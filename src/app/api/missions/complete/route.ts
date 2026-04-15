@@ -22,6 +22,28 @@ import { parseJsonBody } from '@/lib/api/errors';
  */
 const MAX_REWARD_MULTIPLIER = 4.0;
 
+type MissionForProof = typeof missions.$inferSelect;
+
+function missionRequiresProof(mission: MissionForProof): boolean {
+  const metadata = mission.metadata ?? {};
+  if (typeof metadata.requiresProof === 'boolean') {
+    return metadata.requiresProof;
+  }
+  if (metadata.autoVerify === true) {
+    return false;
+  }
+  return mission.missionType === 'creation' || mission.missionType === 'viral';
+}
+
+function isValidProofUrl(proofUrl: string): boolean {
+  try {
+    const url = new URL(proofUrl);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * POST /api/missions/complete — Submit mission completion
  *
@@ -94,13 +116,28 @@ export async function POST(request: Request) {
     );
   }
 
+  const requiresProof = missionRequiresProof(mission);
+  const normalizedProofUrl = proofUrl?.trim() || null;
+  if (requiresProof && !normalizedProofUrl) {
+    return NextResponse.json(
+      { error: 'Proof URL is required for this mission' },
+      { status: 400 },
+    );
+  }
+  if (normalizedProofUrl && !isValidProofUrl(normalizedProofUrl)) {
+    return NextResponse.json(
+      { error: 'Proof URL must be an http(s) URL' },
+      { status: 400 },
+    );
+  }
+
   // --- Zombie Filter: CHS + Anti-Exploit ---
   const [chs, exploit] = await Promise.all([
     computeCHS(creatorResult.creatorId, creatorResult.creator),
     runExploitChecks({
       creatorId: creatorResult.creatorId,
       missionId,
-      proofUrl: proofUrl ?? null,
+      proofUrl: normalizedProofUrl,
     }),
   ]);
 
@@ -175,6 +212,9 @@ export async function POST(request: Request) {
 
       const rewardAmount = Math.round(baseReward * totalMultiplier * 100) / 100;
       const scoreAmount = Math.round(baseScore * scoreMultiplier); // Score always granted (even RED)
+      const pendingVerification = requiresProof;
+      const approvedRewardAmount = pendingVerification ? 0 : rewardAmount;
+      const approvedScoreAmount = pendingVerification ? 0 : scoreAmount;
 
       // 5. Insert completion
       const [completion] = await tx
@@ -182,18 +222,19 @@ export async function POST(request: Request) {
         .values({
           creatorId: creatorResult.creatorId,
           missionId,
-          rewardEarned: rewardAmount.toString(),
-          scoreEarned: scoreAmount,
-          proofUrl: proofUrl ?? null,
-          verificationMethod: proofUrl ? 'manual' : 'auto',
+          rewardEarned: approvedRewardAmount.toString(),
+          scoreEarned: approvedScoreAmount,
+          proofUrl: normalizedProofUrl,
+          proofVerified: !requiresProof,
+          verificationMethod: requiresProof ? 'manual' : 'auto',
           mysteryMultiplier: mysteryResult ? mysteryMultiplier.toString() : null,
         })
         .returning();
 
       // 6. Update creator metrics (with streak)
-      const newMissionCount = (creatorResult.creator.missionCount ?? 0) + 1;
-      const newFlatFee = parseFloat(creatorResult.creator.flatFeeEarned ?? '0') + rewardAmount;
-      const newPinkScore = parseFloat(creatorResult.creator.pinkScore ?? '0') + scoreAmount;
+      const newMissionCount = (creatorResult.creator.missionCount ?? 0) + (pendingVerification ? 0 : 1);
+      const newFlatFee = parseFloat(creatorResult.creator.flatFeeEarned ?? '0') + approvedRewardAmount;
+      const newPinkScore = parseFloat(creatorResult.creator.pinkScore ?? '0') + approvedScoreAmount;
 
       // 7. Calculate new tier
       const tierResult = calculateTier(creatorResult.creator.tier, {
@@ -202,25 +243,29 @@ export async function POST(request: Request) {
       });
 
       const currentOnboardingStep = creatorResult.creator.onboardingStep ?? 0;
-      const newOnboardingStep = currentOnboardingStep < 3 ? 3 : currentOnboardingStep;
+      const newOnboardingStep = !pendingVerification && currentOnboardingStep < 3
+        ? 3
+        : currentOnboardingStep;
 
-      await tx
-        .update(creators)
-        .set({
-          missionCount: newMissionCount,
-          flatFeeEarned: newFlatFee.toString(),
-          pinkScore: newPinkScore.toString(),
-          tier: tierResult.tier,
-          commissionRate: tierResult.commissionRate.toString(),
-          squadBonusRate: tierResult.squadBonusRate.toString(),
-          currentStreak: streakResult.currentStreak,
-          longestStreak: streakResult.longestStreak,
-          lastMissionDate: streakResult.lastMissionDate,
-          onboardingStep: newOnboardingStep,
-          ...(tierResult.changed ? { tierUpdatedAt: new Date() } : {}),
-          updatedAt: new Date(),
-        })
-        .where(eq(creators.id, creatorResult.creatorId));
+      if (!pendingVerification) {
+        await tx
+          .update(creators)
+          .set({
+            missionCount: newMissionCount,
+            flatFeeEarned: newFlatFee.toString(),
+            pinkScore: newPinkScore.toString(),
+            tier: tierResult.tier,
+            commissionRate: tierResult.commissionRate.toString(),
+            squadBonusRate: tierResult.squadBonusRate.toString(),
+            currentStreak: streakResult.currentStreak,
+            longestStreak: streakResult.longestStreak,
+            lastMissionDate: streakResult.lastMissionDate,
+            onboardingStep: newOnboardingStep,
+            ...(tierResult.changed ? { tierUpdatedAt: new Date() } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(creators.id, creatorResult.creatorId));
+      }
 
       return {
         completion,
@@ -234,6 +279,9 @@ export async function POST(request: Request) {
         newFlatFee,
         newPinkScore,
         tierResult,
+        pendingVerification,
+        approvedRewardAmount,
+        approvedScoreAmount,
       };
     });
 
@@ -249,8 +297,11 @@ export async function POST(request: Request) {
         id: result.completion.id,
         missionTitle: mission.title,
         missionType: mission.missionType,
-        rewardEarned: result.rewardAmount,
-        scoreEarned: result.scoreAmount,
+        rewardEarned: result.approvedRewardAmount,
+        scoreEarned: result.approvedScoreAmount,
+        calculatedReward: result.rewardAmount,
+        calculatedScore: result.scoreAmount,
+        pendingVerification: result.pendingVerification,
         baseReward: result.baseReward,
         baseScore: result.baseScore,
         isMystery,
@@ -275,8 +326,8 @@ export async function POST(request: Request) {
         flatFeeEarned: result.newFlatFee,
         pinkScore: result.newPinkScore,
         tier: result.tierResult.tier,
-        tierChanged: result.tierResult.changed,
-        ...(result.tierResult.changed
+        tierChanged: !result.pendingVerification && result.tierResult.changed,
+        ...(result.tierResult.changed && !result.pendingVerification
           ? { previousTier: creatorResult.creator.tier, newTier: result.tierResult.tier }
           : {}),
       },

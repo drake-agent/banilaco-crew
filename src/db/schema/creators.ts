@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, integer, decimal, boolean, timestamp, jsonb,
+  pgTable, uuid, text, integer, decimal, boolean, timestamp, jsonb, unique,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -83,7 +83,10 @@ export const creators = pgTable('creators', {
   lastContentAt: timestamp('last_content_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  tiktokHandleUnique: unique('uq_creators_tiktok_handle').on(table.tiktokHandle),
+  squadCodeUnique: unique('uq_creators_squad_code').on(table.squadCode),
+}));
 
 // ---------------------------------------------------------------------------
 // Relations

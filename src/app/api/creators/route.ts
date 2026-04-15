@@ -66,7 +66,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'tiktokHandle is required' }, { status: 400 });
   }
 
-  const [newCreator] = await db.insert(creators).values(values as typeof creators.$inferInsert).returning();
+  values.tiktokHandle = normalizeHandle(String(values.tiktokHandle));
+  if (!values.tiktokHandle) {
+    return NextResponse.json({ error: 'tiktokHandle is required' }, { status: 400 });
+  }
 
-  return NextResponse.json({ creator: newCreator }, { status: 201 });
+  try {
+    const [newCreator] = await db.insert(creators).values(values as typeof creators.$inferInsert).returning();
+
+    return NextResponse.json({ creator: newCreator }, { status: 201 });
+  } catch (err) {
+    if (isUniqueViolation(err)) {
+      return NextResponse.json({ error: 'Creator handle or squad code already exists' }, { status: 409 });
+    }
+    throw err;
+  }
+}
+
+function normalizeHandle(handle: string): string {
+  return handle.trim().replace(/^@+/, '').toLowerCase();
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    typeof err === 'object'
+    && err !== null
+    && (
+      'code' in err && err.code === '23505'
+      || 'message' in err
+        && typeof err.message === 'string'
+        && (
+          err.message.includes('uq_creators_tiktok_handle')
+          || err.message.includes('uq_creators_squad_code')
+        )
+    )
+  );
 }

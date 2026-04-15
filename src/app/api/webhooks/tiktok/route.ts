@@ -8,6 +8,7 @@ import { WEBHOOK_EVENTS } from '@/lib/tiktok/types';
 import { db } from '@/db';
 import { webhookEvents, orderTracking, tiktokCredentials } from '@/db/schema/tiktok';
 import { sampleShipments } from '@/db/schema/samples';
+import { creditOrderGmvIfNeeded } from '@/lib/orders/gmv-credit';
 import { eq } from 'drizzle-orm';
 
 function getWebhook() {
@@ -62,8 +63,13 @@ export async function POST(request: NextRequest) {
 
 async function processEvent(payload: { type: number; shop_id: string; data: Record<string, unknown> }) {
   const statusMap: Record<number, string> = {
-    100: 'UNPAID', 111: 'AWAITING_SHIPMENT', 112: 'AWAITING_SHIPMENT',
-    121: 'IN_TRANSIT', 122: 'DELIVERED', 130: 'COMPLETED', 140: 'CANCELLED',
+    100: 'pending',
+    111: 'confirmed',
+    112: 'confirmed',
+    121: 'confirmed',
+    122: 'confirmed',
+    130: 'settled',
+    140: 'cancelled',
   };
 
   switch (payload.type) {
@@ -71,9 +77,31 @@ async function processEvent(payload: { type: number; shop_id: string; data: Reco
       const orderId = payload.data.order_id as string;
       const status = payload.data.order_status as number;
       if (orderId) {
+        const newStatus = statusMap[status] || 'pending';
+        const [existing] = await db
+          .select({
+            id: orderTracking.id,
+            creatorId: orderTracking.creatorId,
+            orderStatus: orderTracking.orderStatus,
+            gmvAmount: orderTracking.gmvAmount,
+          })
+          .from(orderTracking)
+          .where(eq(orderTracking.shopOrderId, orderId))
+          .limit(1);
+
         await db.update(orderTracking).set({
-          orderStatus: statusMap[status] || 'UNKNOWN',
+          orderStatus: newStatus,
+          ...(newStatus === 'settled' ? { settledAt: new Date() } : {}),
+          syncedAt: new Date(),
         }).where(eq(orderTracking.shopOrderId, orderId));
+
+        if (existing?.creatorId && newStatus === 'settled') {
+          await creditOrderGmvIfNeeded({
+            orderTrackingId: existing.id,
+            creatorId: existing.creatorId,
+            gmv: parseFloat(existing.gmvAmount ?? '0'),
+          });
+        }
       }
       break;
     }
@@ -81,7 +109,7 @@ async function processEvent(payload: { type: number; shop_id: string; data: Reco
     case WEBHOOK_EVENTS.REVERSE_ORDER_STATUS_UPDATE: {
       const orderId = payload.data.order_id as string;
       if (orderId) {
-        await db.update(orderTracking).set({ orderStatus: 'CANCELLED' })
+        await db.update(orderTracking).set({ orderStatus: 'cancelled', syncedAt: new Date() })
           .where(eq(orderTracking.shopOrderId, orderId));
       }
       break;

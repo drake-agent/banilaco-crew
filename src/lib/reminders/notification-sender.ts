@@ -45,7 +45,7 @@ export class EmailNotificationSender implements INotificationSender {
     // In a real system, this would integrate with TikTok's messaging API
     console.log(`[DM -> @${handle}] (not implemented)`);
     console.log(message);
-    return true;
+    return false;
   }
 
   async sendEmail(email: string, subject: string, body: string): Promise<boolean> {
@@ -134,7 +134,7 @@ export class TikTokDMSender implements INotificationSender {
     // This would require TikTok API credentials and proper OAuth flow
     console.log(`[TikTok DM -> @${handle}] (requires API implementation)`);
     console.log(message);
-    return true;
+    return false;
   }
 
   async sendEmail(_email: string, _subject: string, _body: string): Promise<boolean> {
@@ -157,9 +157,9 @@ export function createNotificationSender(
     return new EmailNotificationSender();
   }
 
-  // Composite: DM via console, Email via Resend
+  // Composite: TikTok DM when implemented, Email via Resend
   return new CompositeNotificationSender(
-    new ConsoleNotificationSender(),
+    new TikTokDMSender(),
     new EmailNotificationSender()
   );
 }
