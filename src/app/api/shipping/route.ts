@@ -49,6 +49,17 @@ export async function GET() {
       }, 0) / deliveredShipments.length * 10) / 10
     : null;
 
+  const pending = (statusCounts.requested ?? 0) + (statusCounts.approved ?? 0);
+  const delivered =
+    (statusCounts.delivered ?? 0) +
+    (statusCounts.reminder_1 ?? 0) +
+    (statusCounts.reminder_2 ?? 0) +
+    (statusCounts.content_posted ?? 0);
+  const inTransitGroup = statusCounts.shipped ?? 0;
+  const failed = statusCounts.no_response ?? 0;
+  const contentPosted = statusCounts.content_posted ?? 0;
+  const deliveryBase = shipments.length - pending;
+
   return NextResponse.json({
     shipments: shipments.map((s) => ({
       ...s,
@@ -59,6 +70,17 @@ export async function GET() {
       statusCounts,
       totalShippingCost: Math.round(totalShippingCost * 100) / 100,
       avgDeliveryDays,
+    },
+    analytics: {
+      total: shipments.length,
+      pending,
+      delivered,
+      inTransitGroup,
+      failed,
+      contentPosted,
+      deliveryRate: deliveryBase > 0 ? (delivered / deliveryBase) * 100 : 0,
+      contentRate: delivered > 0 ? (contentPosted / delivered) * 100 : 0,
+      avgDays: avgDeliveryDays ?? 0,
     },
   });
 }

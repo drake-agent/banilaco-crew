@@ -1,5 +1,5 @@
 import {
-  pgTable, uuid, text, decimal, timestamp, date,
+  pgTable, uuid, text, decimal, timestamp, date, unique,
 } from 'drizzle-orm/pg-core';
 import { creators } from './creators';
 
@@ -23,6 +23,12 @@ export const creatorPayouts = pgTable('creator_payouts', {
   paymentMethod: text('payment_method', { enum: ['paypal', 'bank_transfer'] }),
   paymentReference: text('payment_reference'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
-});
+}, (table) => ({
+  creatorPeriodUnique: unique('uq_creator_payout_period').on(
+    table.creatorId,
+    table.periodStart,
+    table.periodEnd,
+  ),
+}));
 
 export type CreatorPayout = typeof creatorPayouts.$inferSelect;

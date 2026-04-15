@@ -67,7 +67,7 @@ export default function CreatorsPage() {
       const res = await fetch(`/api/creators?${params.toString()}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
-      setCreators(json.data || []);
+      setCreators(json.creators || []);
       setTotalCount(json.pagination?.total || 0);
     } catch (err: unknown) {
       const message =

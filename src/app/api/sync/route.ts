@@ -169,6 +169,15 @@ export async function GET(req: NextRequest) {
         cron: 'shop_orders',
         result,
       });
+    } else if (
+      hour === CRON_SCHEDULE.COMPETITOR_DISCOVERY_UTC &&
+      (CRON_SCHEDULE.COMPETITOR_DISCOVERY_DAYS as readonly number[]).includes(
+        day
+      )
+    ) {
+      // UTC 00:00 월/목 = KST 9AM 월/목 — 경쟁사 디스커버리
+      const result = await withTimeout(orchestrator.runCompetitorDiscovery(), 55000, 'competitor_discovery');
+      return NextResponse.json({ cron: 'competitor_discovery', result });
     } else if (hour % 2 === 0) {
       // 짝수 시간마다 — 샘플 배송 추적 동기화
       const { shippingAdapter } = createAdapters({
@@ -192,15 +201,6 @@ export async function GET(req: NextRequest) {
         cron: 'shipping_track',
         skipped: 'No adapter configured',
       });
-    } else if (
-      hour === CRON_SCHEDULE.COMPETITOR_DISCOVERY_UTC &&
-      (CRON_SCHEDULE.COMPETITOR_DISCOVERY_DAYS as readonly number[]).includes(
-        day
-      )
-    ) {
-      // UTC 00:00 월/목 = KST 9AM 월/목 — 경쟁사 디스커버리
-      const result = await withTimeout(orchestrator.runCompetitorDiscovery(), 55000, 'competitor_discovery');
-      return NextResponse.json({ cron: 'competitor_discovery', result });
     } else {
       return NextResponse.json({
         cron: 'no_job_scheduled',

@@ -2,13 +2,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { Package, Truck, AlertCircle } from 'lucide-react';
+import type { SampleSetType, SampleStatus } from '@/types/database';
 
-interface Sample {
+interface SampleShipmentView {
   id: string;
-  name: string;
-  status: 'delivered' | 'shipped' | 'pending';
-  shippedDate: string;
-  tracking: string;
+  setType: SampleSetType;
+  status: SampleStatus;
+  shippedAt: string | null;
+  trackingNumber: string | null;
 }
 
 interface SampleSet {
@@ -17,31 +18,47 @@ interface SampleSet {
   tier?: string;
 }
 
-
-const getStatusBadgeColor = (status: Sample['status']) => {
-  switch (status) {
-    case 'delivered':
-      return 'bg-green-100 text-green-800';
-    case 'shipped':
-      return 'bg-blue-100 text-blue-800';
-    case 'pending':
-      return 'bg-yellow-100 text-yellow-800';
-  }
+const getStatusBadgeColor = (status: SampleStatus) => {
+  const colors: Record<SampleStatus, string> = {
+    requested: 'bg-gray-100 text-gray-800',
+    approved: 'bg-blue-100 text-blue-800',
+    shipped: 'bg-purple-100 text-purple-800',
+    delivered: 'bg-green-100 text-green-800',
+    reminder_1: 'bg-orange-100 text-orange-800',
+    reminder_2: 'bg-red-100 text-red-800',
+    content_posted: 'bg-emerald-100 text-emerald-800',
+    no_response: 'bg-gray-200 text-gray-800',
+  };
+  return colors[status];
 };
 
-const getStatusLabel = (status: Sample['status']) => {
-  switch (status) {
-    case 'delivered':
-      return '✓ Delivered';
-    case 'shipped':
-      return 'Shipped';
-    case 'pending':
-      return 'Pending';
-  }
+const getStatusLabel = (status: SampleStatus) => {
+  const labels: Record<SampleStatus, string> = {
+    requested: 'Requested',
+    approved: 'Approved',
+    shipped: 'Shipped',
+    delivered: 'Delivered',
+    reminder_1: 'Reminder 1 Sent',
+    reminder_2: 'Reminder 2 Sent',
+    content_posted: 'Content Posted',
+    no_response: 'No Response',
+  };
+  return labels[status];
+};
+
+const getSetTypeLabel = (setType: SampleSetType) => {
+  const labels: Record<SampleSetType, string> = {
+    hero: 'Hero Set',
+    premium: 'Premium Set',
+    mini: 'Mini Set',
+    full: 'Full Set',
+    welcome: 'Welcome Set',
+  };
+  return labels[setType];
 };
 
 export default function SamplesPage() {
-  const [samples, setSamples] = useState<any[]>([]);
+  const [samples, setSamples] = useState<SampleShipmentView[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -127,7 +144,7 @@ export default function SamplesPage() {
                 {samples.map((sample) => (
                   <tr key={sample.id} className="hover:bg-gray-50 transition">
                     <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                      {sample.name}
+                      {getSetTypeLabel(sample.setType)}
                     </td>
                     <td className="px-6 py-4 text-sm">
                       <span
@@ -139,10 +156,10 @@ export default function SamplesPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {sample.shippedDate}
+                      {sample.shippedAt ? new Date(sample.shippedAt).toLocaleDateString() : 'Not shipped'}
                     </td>
                     <td className="px-6 py-4 text-sm font-mono text-gray-600">
-                      {sample.tracking}
+                      {sample.trackingNumber || '-'}
                     </td>
                   </tr>
                 ))}

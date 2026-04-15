@@ -233,11 +233,14 @@ const PipelineIndicator: React.FC<PipelineIndicatorProps> = ({ status }) => {
 interface NewShipmentFormProps {
   isOpen: boolean;
   onClose: () => void;
+  onCreated: () => void | Promise<void>;
 }
 
-const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) => {
+const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose, onCreated }) => {
   const [creators, setCreators] = useState<Creator[]>([]);
   const [creatorsLoading, setCreatorsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     creatorId: '',
     setType: 'hero' as SampleSetType,
@@ -255,7 +258,7 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
         const res = await fetch('/api/creators');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const json = await res.json();
-        setCreators(json.data || []);
+        setCreators(json.creators || []);
       } catch (err) {
         console.error('Creators fetch error:', err);
       } finally {
@@ -265,19 +268,47 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
     fetchCreators();
   }, [isOpen]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle form submission (in real app would save to DB)
-    console.log('New shipment:', formData);
-    setFormData({
-      creatorId: '',
-      setType: 'hero',
-      skus: '',
-      estimatedCost: '',
-      shippingCost: '',
-      notes: '',
-    });
-    onClose();
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const res = await fetch('/api/samples', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          creatorId: formData.creatorId,
+          setType: formData.setType,
+          skuList: formData.skus
+            .split(',')
+            .map((sku) => sku.trim())
+            .filter(Boolean),
+          estimatedCost: formData.estimatedCost || undefined,
+          shippingCost: formData.shippingCost || undefined,
+          notes: formData.notes || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || `HTTP ${res.status}`);
+      }
+
+      setFormData({
+        creatorId: '',
+        setType: 'hero',
+        skus: '',
+        estimatedCost: '',
+        shippingCost: '',
+        notes: '',
+      });
+      await onCreated();
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create shipment');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -286,6 +317,7 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md space-y-4">
         <h2 className="text-xl font-bold text-gray-900">New Sample Shipment</h2>
+        {error && <p className="text-sm text-red-600">{error}</p>}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Creator</label>
@@ -386,9 +418,10 @@ const NewShipmentForm: React.FC<NewShipmentFormProps> = ({ isOpen, onClose }) =>
             </button>
             <button
               type="submit"
+              disabled={submitting}
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
             >
-              Create Shipment
+              {submitting ? 'Creating...' : 'Create Shipment'}
             </button>
           </div>
         </form>
@@ -408,6 +441,7 @@ export default function SampleShipmentsPage() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [statusFilter, setStatusFilter] = useState<SampleStatus | 'all'>('all');
   const [setTypeFilter, setSetTypeFilter] = useState<SampleSetType | 'all'>('all');
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchSamples = useCallback(async () => {
     setLoading(true);
@@ -444,46 +478,41 @@ export default function SampleShipmentsPage() {
     return statusMatch && typeMatch;
   });
 
-  const handleStatusChange = (shipmentId: string, newStatus: SampleStatus) => {
-    setSamples(
-      samples.map((s) => {
-        if (s.id === shipmentId) {
-          const now = new Date();
-          const updated = { ...s, status: newStatus, updatedAt: now };
-          if (newStatus === 'content_posted') {
-            updated.contentPostedAt = now;
-          } else if (newStatus === 'reminder_1') {
-            updated.reminder1SentAt = now;
-          } else if (newStatus === 'reminder_2') {
-            updated.reminder2SentAt = now;
-          }
-          return updated;
-        }
-        return s;
-      })
-    );
+  const handleStatusChange = async (shipmentId: string, newStatus: SampleStatus) => {
+    setActionError(null);
+
+    const res = await fetch('/api/samples', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: shipmentId, status: newStatus }),
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setActionError(body.error || `HTTP ${res.status}`);
+      return;
+    }
+
+    const json = await res.json();
+    const updatedSample = json.data as SampleShipment;
+    setSamples((current) => current.map((sample) => (
+      sample.id === shipmentId ? updatedSample : sample
+    )));
   };
 
-  const handleSendReminders = () => {
-    const now = new Date();
-    setSamples(
-      samples.map((s) => {
-        if (!s.deliveredAt) return s;
-        const daysSinceDelivery =
-          (now.getTime() - new Date(s.deliveredAt).getTime()) / (1000 * 60 * 60 * 24);
-
-        // Send reminder 1 if 5+ days and no content
-        if (daysSinceDelivery >= 5 && !s.contentPostedAt && s.status === 'delivered') {
-          return {
-            ...s,
-            status: 'reminder_1' as SampleStatus,
-            reminder1SentAt: now,
-            updatedAt: now,
-          };
-        }
-        return s;
-      })
-    );
+  const handleSendReminders = async () => {
+    setActionError(null);
+    const res = await fetch('/api/reminders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'manual' }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setActionError(body.error || `HTTP ${res.status}`);
+      return;
+    }
+    await fetchSamples();
   };
 
   const getNextStatuses = (current: SampleStatus): SampleStatus[] => {
@@ -530,6 +559,13 @@ export default function SampleShipmentsPage() {
 
         {/* Summary Cards */}
         <SummaryCards samples={samples} />
+
+        {/* Filters */}
+        {actionError && (
+          <div className="mb-4 rounded border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {actionError}
+          </div>
+        )}
 
         {/* Filters */}
         <div className="mb-6 flex gap-4">
@@ -604,10 +640,10 @@ export default function SampleShipmentsPage() {
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="font-medium text-gray-900">
-                            @{(sample as any).creator?.tiktokHandle}
+                            @{(sample as any).creator?.tiktokHandle ?? (sample as any).creator?.tiktok_handle}
                           </span>
                           <span className="text-xs text-gray-600">
-                            {(sample as any).creator?.displayName}
+                            {(sample as any).creator?.displayName ?? (sample as any).creator?.display_name}
                           </span>
                         </div>
                       </td>
@@ -822,6 +858,7 @@ export default function SampleShipmentsPage() {
       <NewShipmentForm
         isOpen={showNewForm}
         onClose={() => setShowNewForm(false)}
+        onCreated={fetchSamples}
       />
     </div>
   );

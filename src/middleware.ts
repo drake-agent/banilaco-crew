@@ -18,6 +18,7 @@ export default auth((req) => {
     pathname === '/auth' ||
     pathname.startsWith('/api/join') ||
     pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/squad/validate') ||
     pathname.startsWith('/api/sync') ||
     pathname.startsWith('/api/webhooks') ||
     pathname.startsWith('/_next') ||

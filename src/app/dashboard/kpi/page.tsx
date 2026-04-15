@@ -31,13 +31,50 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import type { WeeklyKpi } from '@/types/database';
 
+function numberValue(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function formatNumber(value: unknown): string {
+  return numberValue(value).toLocaleString();
+}
+
+function formatFixed(value: unknown, digits: number): string {
+  return numberValue(value).toFixed(digits);
+}
+
+function formatPercent(value: unknown, total: unknown, digits = 0): string {
+  const denominator = numberValue(total);
+  if (denominator <= 0) return formatFixed(0, digits);
+  return formatFixed((numberValue(value) / denominator) * 100, digits);
+}
+
+type KpiViewRow = WeeklyKpi & {
+  weeklyContentCount?: unknown;
+  monthlyActiveCreators?: unknown;
+  weeklyGmv?: unknown;
+};
+
+function weeklyContentCount(row: KpiViewRow): number {
+  return numberValue(row.weeklyContentCount ?? row.sampleShipped);
+}
+
+function monthlyActiveCreators(row: KpiViewRow): number {
+  return numberValue(row.monthlyActiveCreators ?? row.weeklyNewAffiliates);
+}
+
+function weeklyGmv(row: KpiViewRow): number {
+  return numberValue(row.weeklyGmv ?? row.monthlyGmv);
+}
+
 // Helper function to generate derived data from API response
 function generateChartData(data: WeeklyKpi[]) {
   if (!data.length) return { cumulativeChartData: [], weeklyNetIncreaseData: [], gmvTrendData: [], contentProductionData: [], channelMixData: [], secondaryKPIs: [] };
 
   const cumulativeChartData = data.map((w, idx) => ({
     week: `W${idx + 1}`,
-    actual: w.cumulativeAffiliates,
+    actual: numberValue(w.cumulativeAffiliates),
     target:
       idx + 1 === 1
         ? 3750
@@ -52,41 +89,41 @@ function generateChartData(data: WeeklyKpi[]) {
 
   const weeklyNetIncreaseData = data.map((w, idx) => ({
     week: `W${idx + 1}`,
-    'Open Collab': w.openCollabNew,
-    'DM Outreach': w.dmOutreachNew,
-    'MCN': w.mcnNew,
-    'Buyer→Creator': w.buyerToCreatorNew,
-    'Referral': w.referralNew,
+    'Open Collab': numberValue(w.openCollabNew),
+    'DM Outreach': numberValue(w.dmOutreachNew),
+    'MCN': numberValue(w.mcnNew),
+    'Buyer→Creator': numberValue(w.buyerToCreatorNew),
+    'Referral': numberValue(w.referralNew),
   }));
 
   const gmvTrendData = data.map((w, idx) => ({
     week: `W${idx + 1}`,
-    gmv: parseFloat(w.monthlyGmv ?? '0'), // weeklyGmv not in schema, approximate from monthlyGmv
-    cumulative: parseFloat(w.monthlyGmv ?? '0'),
+    gmv: weeklyGmv(w),
+    cumulative: numberValue(w.monthlyGmv),
   }));
 
   const contentProductionData = data.map((w, idx) => ({
     week: `W${idx + 1}`,
-    'Content Count': w.sampleShipped ?? 0, // weeklyContentCount not in schema
-    'Active Creators': w.weeklyNewAffiliates ?? 0, // monthlyActiveCreators not in schema
+    'Content Count': weeklyContentCount(w),
+    'Active Creators': monthlyActiveCreators(w),
   }));
 
   const latestData = data[data.length - 1];
   const channelMixData = [
     {
       name: 'Open Collab',
-      value: (latestData.openCollabNew ?? 0) * 5,
+      value: numberValue(latestData.openCollabNew) * 5,
       percentage: 40,
     },
     {
       name: 'DM Outreach',
-      value: (latestData.dmOutreachNew ?? 0) * 5,
+      value: numberValue(latestData.dmOutreachNew) * 5,
       percentage: 30,
     },
-    { name: 'MCN', value: (latestData.mcnNew ?? 0) * 5, percentage: 20 },
+    { name: 'MCN', value: numberValue(latestData.mcnNew) * 5, percentage: 20 },
     {
       name: 'Buyer→Creator',
-      value: (latestData.buyerToCreatorNew ?? 0) * 5,
+      value: numberValue(latestData.buyerToCreatorNew) * 5,
       percentage: 10,
     },
   ];
@@ -94,13 +131,13 @@ function generateChartData(data: WeeklyKpi[]) {
   const secondaryKPIs = [
     {
       label: 'DM Response Rate',
-      value: `${parseFloat(latestData.dmResponseRate ?? '0').toFixed(1)}%`,
+      value: `${formatFixed(latestData.dmResponseRate, 1)}%`,
       target: '40%',
       status: 'approaching',
     },
     {
       label: 'Sample Post Conversion Rate',
-      value: `${parseFloat(latestData.samplePostRate ?? '0').toFixed(1)}%`,
+      value: `${formatFixed(latestData.samplePostRate, 1)}%`,
       target: '70%',
       status: 'approaching',
     },
@@ -124,7 +161,7 @@ function generateChartData(data: WeeklyKpi[]) {
     },
     {
       label: 'GMV Max ROAS',
-      value: `${parseFloat(latestData.gmvMaxRoas ?? '0').toFixed(1)}x`,
+      value: `${formatFixed(latestData.gmvMaxRoas, 1)}x`,
       target: '4.0x',
       status: 'exceeding',
     },
@@ -390,33 +427,33 @@ export default function KPIDashboardPage() {
         <StatCard
           icon={Users}
           label="Cumulative Affiliates"
-          value={`${((latestData.cumulativeAffiliates ?? 0) / 1000).toFixed(1)}K`}
+          value={`${formatFixed(numberValue(latestData.cumulativeAffiliates) / 1000, 1)}K`}
           trend="up"
-          trendValue={`+${latestData.netIncrease ?? 0} WoW`}
+          trendValue={`+${formatNumber(latestData.netIncrease)} WoW`}
         />
         <StatCard
           label="Weekly Net Increase"
-          value={`${latestData.netIncrease.toLocaleString()}`}
+          value={formatNumber(latestData.netIncrease)}
           subtext="New - Churned"
           trend="up"
-          trendValue={`${latestData.weeklyNewAffiliates - latestData.churned} affiliates`}
+          trendValue={`${formatNumber(numberValue(latestData.weeklyNewAffiliates) - numberValue(latestData.churned))} affiliates`}
         />
         <StatCard
           label="Monthly Active Creators"
-          value={`${latestData.monthlyActiveCreators.toLocaleString()}`}
+          value={formatNumber(monthlyActiveCreators(latestData))}
           trend="up"
           trendValue="+15.7% MoM"
         />
         <StatCard
           label="Weekly Content Count"
-          value={`${latestData.weeklyContentCount.toLocaleString()}`}
+          value={formatNumber(weeklyContentCount(latestData))}
           trend="up"
           trendValue="+170 pieces"
         />
         <StatCard
           icon={DollarSign}
           label="Monthly GMV"
-          value={`$${(latestData.monthlyGmv / 1000).toFixed(0)}K`}
+          value={`$${formatFixed(numberValue(latestData.monthlyGmv) / 1000, 0)}K`}
           trend="up"
           trendValue="+29% MoM"
         />
@@ -623,10 +660,10 @@ export default function KPIDashboardPage() {
                 <tr className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="text-sm text-gray-900 py-3">Open Collab</td>
                   <td className="text-right text-sm font-semibold text-gray-900">
-                    {latestData.openCollabNew}
+                    {formatNumber(latestData.openCollabNew)}
                   </td>
                   <td className="text-right text-sm font-semibold text-gray-900">
-                    {latestData.openCollabNew * 5}
+                    {formatNumber(numberValue(latestData.openCollabNew) * 5)}
                   </td>
                   <td className="text-right text-sm text-pink-600 font-semibold">
                     40%
@@ -636,10 +673,10 @@ export default function KPIDashboardPage() {
                 <tr className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="text-sm text-gray-900 py-3">DM Outreach</td>
                   <td className="text-right text-sm font-semibold text-gray-900">
-                    {latestData.dmOutreachNew}
+                    {formatNumber(latestData.dmOutreachNew)}
                   </td>
                   <td className="text-right text-sm font-semibold text-gray-900">
-                    {latestData.dmOutreachNew * 5}
+                    {formatNumber(numberValue(latestData.dmOutreachNew) * 5)}
                   </td>
                   <td className="text-right text-sm text-emerald-600 font-semibold">
                     30%
@@ -649,10 +686,10 @@ export default function KPIDashboardPage() {
                 <tr className="border-b border-gray-100 hover:bg-gray-50">
                   <td className="text-sm text-gray-900 py-3">MCN</td>
                   <td className="text-right text-sm font-semibold text-gray-900">
-                    {latestData.mcnNew}
+                    {formatNumber(latestData.mcnNew)}
                   </td>
                   <td className="text-right text-sm font-semibold text-gray-900">
-                    {latestData.mcnNew * 5}
+                    {formatNumber(numberValue(latestData.mcnNew) * 5)}
                   </td>
                   <td className="text-right text-sm text-blue-600 font-semibold">
                     20%
@@ -662,10 +699,10 @@ export default function KPIDashboardPage() {
                 <tr className="hover:bg-gray-50">
                   <td className="text-sm text-gray-900 py-3">Buyer→Creator</td>
                   <td className="text-right text-sm font-semibold text-gray-900">
-                    {latestData.buyerToCreatorNew}
+                    {formatNumber(latestData.buyerToCreatorNew)}
                   </td>
                   <td className="text-right text-sm font-semibold text-gray-900">
-                    {latestData.buyerToCreatorNew * 5}
+                    {formatNumber(numberValue(latestData.buyerToCreatorNew) * 5)}
                   </td>
                   <td className="text-right text-sm text-amber-600 font-semibold">
                     10%
@@ -727,31 +764,31 @@ export default function KPIDashboardPage() {
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Cumulative Affiliates</span>
                 <span className="font-semibold text-gray-900">
-                  {(latestData.cumulativeAffiliates ?? 0).toLocaleString()}
+                  {formatNumber(latestData.cumulativeAffiliates)}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Weekly New Affiliates</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.weeklyNewAffiliates}
+                  {formatNumber(latestData.weeklyNewAffiliates)}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Weekly Churned</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.churned}
+                  {formatNumber(latestData.churned)}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Weekly Net Increase</span>
                 <span className="font-semibold text-emerald-600">
-                  +{latestData.netIncrease}
+                  +{formatNumber(latestData.netIncrease)}
                 </span>
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-gray-600">Progress to 30K</span>
                 <span className="font-semibold text-pink-600">
-                  {(((latestData.cumulativeAffiliates ?? 0) / 30000) * 100).toFixed(1)}%
+                  {formatFixed((numberValue(latestData.cumulativeAffiliates) / 30000) * 100, 1)}%
                 </span>
               </div>
             </div>
@@ -764,36 +801,36 @@ export default function KPIDashboardPage() {
               <div className="flex justify-between items-center py-2 border-b border-gray-200">
                 <span className="text-gray-600">Open Collab</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.openCollabNew}
+                  {formatNumber(latestData.openCollabNew)}
                   <span className="text-gray-500 text-xs ml-2">
-                    ({(latestData.openCollabNew / latestData.weeklyNewAffiliates * 100).toFixed(0)}%)
+                    ({formatPercent(latestData.openCollabNew, latestData.weeklyNewAffiliates)}%)
                   </span>
                 </span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-gray-200">
                 <span className="text-gray-600">DM Outreach</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.dmOutreachNew}
+                  {formatNumber(latestData.dmOutreachNew)}
                   <span className="text-gray-500 text-xs ml-2">
-                    ({(latestData.dmOutreachNew / latestData.weeklyNewAffiliates * 100).toFixed(0)}%)
+                    ({formatPercent(latestData.dmOutreachNew, latestData.weeklyNewAffiliates)}%)
                   </span>
                 </span>
               </div>
               <div className="flex justify-between items-center py-2 border-b border-gray-200">
                 <span className="text-gray-600">MCN</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.mcnNew}
+                  {formatNumber(latestData.mcnNew)}
                   <span className="text-gray-500 text-xs ml-2">
-                    ({(latestData.mcnNew / latestData.weeklyNewAffiliates * 100).toFixed(0)}%)
+                    ({formatPercent(latestData.mcnNew, latestData.weeklyNewAffiliates)}%)
                   </span>
                 </span>
               </div>
               <div className="flex justify-between items-center py-2">
                 <span className="text-gray-600">Buyer→Creator</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.buyerToCreatorNew}
+                  {formatNumber(latestData.buyerToCreatorNew)}
                   <span className="text-gray-500 text-xs ml-2">
-                    ({(latestData.buyerToCreatorNew / latestData.weeklyNewAffiliates * 100).toFixed(0)}%)
+                    ({formatPercent(latestData.buyerToCreatorNew, latestData.weeklyNewAffiliates)}%)
                   </span>
                 </span>
               </div>
@@ -810,25 +847,25 @@ export default function KPIDashboardPage() {
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Weekly Content Posted</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.weeklyContentCount}
+                  {formatNumber(weeklyContentCount(latestData))}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Samples Shipped</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.sampleShipped}
+                  {formatNumber(latestData.sampleShipped)}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Sample Post Conversion</span>
                 <span className="font-semibold text-emerald-600">
-                  {latestData.samplePostRate.toFixed(1)}%
+                  {formatFixed(latestData.samplePostRate, 1)}%
                 </span>
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-gray-600">Monthly Active Creators</span>
                 <span className="font-semibold text-gray-900">
-                  {latestData.monthlyActiveCreators.toLocaleString()}
+                  {formatNumber(monthlyActiveCreators(latestData))}
                 </span>
               </div>
             </div>
@@ -841,25 +878,25 @@ export default function KPIDashboardPage() {
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Weekly GMV</span>
                 <span className="font-semibold text-gray-900">
-                  ${latestData.weeklyGmv.toLocaleString()}
+                  ${formatNumber(weeklyGmv(latestData))}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Monthly GMV (Cumulative)</span>
                 <span className="font-semibold text-gray-900">
-                  ${latestData.monthlyGmv.toLocaleString()}
+                  ${formatNumber(latestData.monthlyGmv)}
                 </span>
               </div>
               <div className="flex justify-between py-2 border-b border-gray-200">
                 <span className="text-gray-600">Daily Budget</span>
                 <span className="font-semibold text-gray-900">
-                  ${latestData.gmvMaxDailyBudget.toLocaleString()}
+                  ${formatNumber(latestData.gmvMaxDailyBudget)}
                 </span>
               </div>
               <div className="flex justify-between py-2">
                 <span className="text-gray-600">ROAS</span>
                 <span className="font-semibold text-pink-600">
-                  {latestData.gmvMaxRoas.toFixed(1)}x
+                  {formatFixed(latestData.gmvMaxRoas, 1)}x
                 </span>
               </div>
             </div>

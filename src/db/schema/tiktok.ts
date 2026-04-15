@@ -36,6 +36,8 @@ export const orderTracking = pgTable('order_tracking', {
   creatorId: uuid('creator_id').references(() => creators.id),
   orderStatus: text('order_status'),
   gmvAmount: decimal('gmv_amount', { precision: 10, scale: 2 }),
+  orderedAt: timestamp('ordered_at', { withTimezone: true }),
+  settledAt: timestamp('settled_at', { withTimezone: true }),
   syncedAt: timestamp('synced_at', { withTimezone: true }).defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });

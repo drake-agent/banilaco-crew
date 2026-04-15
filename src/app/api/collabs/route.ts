@@ -9,6 +9,18 @@ import { parseJsonBody } from '@/lib/api/errors';
 import { alias } from 'drizzle-orm/pg-core';
 import { eq, and, or, desc } from 'drizzle-orm';
 
+function validateHttpUrl(contentUrl: string): string | null {
+  try {
+    const parsedUrl = new URL(contentUrl);
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return 'contentUrl must use http(s)';
+    }
+    return null;
+  } catch {
+    return 'contentUrl must be a valid URL';
+  }
+}
+
 /**
  * GET /api/collabs — My collabs (pending + recent verified)
  */
@@ -101,6 +113,11 @@ export async function POST(request: Request) {
 
   if (!partnerHandle || !productTag) {
     return NextResponse.json({ error: 'partnerHandle and productTag required' }, { status: 400 });
+  }
+
+  if (contentUrl) {
+    const urlError = validateHttpUrl(contentUrl);
+    if (urlError) return NextResponse.json({ error: urlError }, { status: 400 });
   }
 
   // Resolve partner
@@ -217,14 +234,8 @@ export async function PATCH(request: Request) {
   }
 
   // M2 FIX: validate URL shape — prevents javascript:/data: exploits and garbage.
-  try {
-    const parsedUrl = new URL(contentUrl);
-    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-      return NextResponse.json({ error: 'contentUrl must use http(s)' }, { status: 400 });
-    }
-  } catch {
-    return NextResponse.json({ error: 'contentUrl must be a valid URL' }, { status: 400 });
-  }
+  const urlError = validateHttpUrl(contentUrl);
+  if (urlError) return NextResponse.json({ error: urlError }, { status: 400 });
 
   // Weekly limit for partner
   const weeklyCount = await getWeeklyCollabCount(result.creatorId);

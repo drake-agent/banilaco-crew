@@ -4,6 +4,7 @@ import { creatorPayouts } from '@/db/schema/payouts';
 import { creators } from '@/db/schema/creators';
 import { squadBonusLog } from '@/db/schema/squad';
 import { missionCompletions } from '@/db/schema/missions';
+import { orderTracking } from '@/db/schema/tiktok';
 import { verifyAdmin, getCreatorFromAuth } from '@/lib/auth';
 import { eq, and, desc, sql, gte, lte, sum } from 'drizzle-orm';
 
@@ -53,6 +54,9 @@ export async function POST(request: NextRequest) {
 
   const start = new Date(periodStart);
   const end = new Date(periodEnd);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) {
+    return NextResponse.json({ error: 'Valid periodStart and periodEnd required' }, { status: 400 });
+  }
   const period = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}`;
 
   // BUG-4 FIX: Idempotency check — prevent duplicate payouts for same period
@@ -82,8 +86,20 @@ export async function POST(request: NextRequest) {
 
   for (const creator of activeCreators) {
     const commissionRate = parseFloat(creator.commissionRate ?? '0');
-    const monthlyGmv = parseFloat(creator.monthlyGmv ?? '0');
-    const commissionAmount = monthlyGmv * commissionRate;
+
+    const [orderGmv] = await db
+      .select({
+        total: sql<string>`COALESCE(SUM(${orderTracking.gmvAmount}::numeric), 0)`,
+      })
+      .from(orderTracking)
+      .where(and(
+        eq(orderTracking.creatorId, creator.id),
+        eq(orderTracking.orderStatus, 'settled'),
+        sql`COALESCE(${orderTracking.settledAt}, ${orderTracking.createdAt}) >= ${start}`,
+        sql`COALESCE(${orderTracking.settledAt}, ${orderTracking.createdAt}) <= ${end}`,
+      ));
+    const periodGmv = parseFloat(orderGmv?.total ?? '0');
+    const commissionAmount = periodGmv * commissionRate;
 
     // Flat fee from missions in this period
     const [missionFees] = await db
@@ -110,11 +126,11 @@ export async function POST(request: NextRequest) {
 
     if (totalPayout <= 0) continue;
 
-    await db.insert(creatorPayouts).values({
+    const [inserted] = await db.insert(creatorPayouts).values({
       creatorId: creator.id,
       periodStart: periodStart,
       periodEnd: periodEnd,
-      totalGmv: monthlyGmv.toString(),
+      totalGmv: periodGmv.toString(),
       commissionRate: commissionRate.toString(),
       commissionAmount: commissionAmount.toString(),
       flatFeeAmount: flatFeeAmount.toString(),
@@ -122,9 +138,11 @@ export async function POST(request: NextRequest) {
       leagueBonusAmount: '0', // TODO: league prizes
       totalPayout: totalPayout.toString(),
       status: 'pending',
-    });
+    }).onConflictDoNothing({
+      target: [creatorPayouts.creatorId, creatorPayouts.periodStart, creatorPayouts.periodEnd],
+    }).returning({ id: creatorPayouts.id });
 
-    generated++;
+    if (inserted) generated++;
   }
 
   return NextResponse.json({
